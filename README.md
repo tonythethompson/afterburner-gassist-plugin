@@ -221,6 +221,8 @@ Ask *"What's controlling my GPU overclock right now?"* to see the ownership repo
 - Deliverable check: `python build.py --check` (exit 0 = all deliverables present).
 - If Afterburner was updated, re-run `tools/generate_sdk_layout_fixtures.py --diff` and re-run the
   integration tests to re-verify the shared-memory layouts against the new install.
+- CI (`.github/workflows/ci.yml`) runs the full test suite, `build.py --check`, and the `--diff`
+  drift gate on every push to `main` and every pull request.
 
 ---
 
