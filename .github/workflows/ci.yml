@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # The plugin targets Windows (MAHM/MACM shared memory via ctypes/wintypes), and the
+    # integration clients import ctypes.wintypes at module scope, so tests must run on a
+    # Windows runner. No Afterburner install exists on runners: the MAHM/MACM live
+    # integration tests self-skip, the ctypes bindings fall back to the committed
+    # sdk_layouts fixtures, and the --diff drift gate exits 0 with a "no installed
+    # header" notice.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install development dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Full test suite (Properties P1-P10 + unit tests)
+        run: python -m pytest -q
+
+      - name: Deliverable verification (build.py --check)
+        run: python build.py --check
+
+      - name: SDK-layout drift gate (--diff)
+        # Exit 0 on exact match against the installed header, or when no Afterburner
+        # install/header is present (committed fixtures stand). Exit 1 on layout drift,
+        # exit 2 if the installed header no longer parses under the supported subset.
+        run: python tools/generate_sdk_layout_fixtures.py --diff
