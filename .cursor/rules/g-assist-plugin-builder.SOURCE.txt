@@ -1,0 +1,13 @@
+Official NVIDIA G-Assist Plugin Builder Cursor rule.
+
+Copied from:
+https://github.com/NVIDIA/G-Assist/blob/main/plugins/plugin-builder/.cursor/rules/RULE.md
+
+Upstream folder:
+https://github.com/NVIDIA/G-Assist/tree/main/plugins/plugin-builder
+
+License: Apache License 2.0 (see g-assist-plugin-builder.LICENSE)
+
+The rule body is unmodified NVIDIA content. Filename changed from
+RULE.md to g-assist-plugin-builder.mdc so it is identifiable in this repo.
+Cursor applies it because alwaysApply is true in the official frontmatter.

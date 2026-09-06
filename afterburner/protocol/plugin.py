@@ -195,6 +195,15 @@ class _ExecutionError(Exception):
     """Marks a PluginError raised from an executor (already typed)."""
 
 
+class CommandFailed(Exception):
+    """Typed command failure for the SDK adapter (maps to an error notification)."""
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
 def apply_single_value(
     services: PluginServices,
     gpu_index: int,
@@ -307,12 +316,18 @@ class GAssistPlugin:
         self.initialized = False
         self.shutdown_requested = False
         self.keep_session = False
+        self.on_stream: Optional[Callable[[str], None]] = None
         self._startup_status = "not_started"
         self._startup_detail = ""
         # Pending passthrough-input confirmations: function -> {args, expires_at, gpu}
         self._pending_input: Dict[str, Dict[str, Any]] = {}
         self._registry: Dict[str, Executor] = self._build_registry()
         self._startup_ms: Optional[float] = None
+
+    def _emit_stream(self, text: str) -> None:
+        """SDK ``plugin.stream()`` hook. No-op when no listener is attached (unit tests)."""
+        if text and self.on_stream is not None:
+            self.on_stream(text)
 
     def commands(self) -> List[Dict[str, str]]:
         """[{"name", "description"}] for the initialize result (engine protocol V2)."""
@@ -430,6 +445,7 @@ class GAssistPlugin:
             return ExecResult(message=result.message, data={"applied": True})
 
         def diagnose(args: Dict[str, Any], gpu: int) -> ExecResult:
+            self._emit_stream("Checking live GPU telemetry...")
             diagnosis = s.diagnostics.diagnose_performance(gpu)
             evidence = list(diagnosis.evidence)
             message = (
@@ -456,11 +472,16 @@ class GAssistPlugin:
             return apply_fan_curve(self.services, gpu, args.get("points"))
 
         def optimize_quiet(args: Dict[str, Any], gpu: int) -> ExecResult:
+            self._emit_stream("Looking for a quieter fan setting...")
             result = s.optimize.optimize_quiet(gpu)
             return ExecResult(message=result.message, data=_result_data(result))
 
         def optimize_thermal(args: Dict[str, Any], gpu: int) -> ExecResult:
             target = args.get("target_c")
+            if target is not None:
+                self._emit_stream(f"Adjusting cooling toward {target} C...")
+            else:
+                self._emit_stream("Adjusting cooling toward the target temperature...")
             result = s.optimize.optimize_thermal(target, gpu)
             return ExecResult(message=result.message, data=_result_data(result))
 
@@ -609,6 +630,7 @@ class GAssistPlugin:
             ]
         args, token = self._extract_args(params)
         args.setdefault("__function", function)
+        self.keep_session = False
 
         if self.services.policy.requires_confirmation(function):
             return self._risky(function, args, token, request_id)
@@ -669,7 +691,6 @@ class GAssistPlugin:
         # Single-use + TTL token, kept server-side (Req 9.1). The wire never carries it:
         # the engine relays the user's plain-text verdict back as an ``input`` message.
         confirm = self.services.policy.issue_confirm_token(function, safe_value)
-        self.keep_session = True
         self._pending_input[function] = {
             "args": {k: v for k, v in args.items() if k != "__function"},
             "expires_at": self._clock() + PASSTHROUGH_TIMEOUT_SECONDS,
@@ -678,6 +699,7 @@ class GAssistPlugin:
         }
         clause = self._clause(function, gpu, safe_value)
         message = self._prompt_message(function, args, safe_value) + " " + clause
+        self._emit_stream(message)
         return [
             self._complete(request_id, message=message, keep_session=True)
         ]
@@ -686,6 +708,7 @@ class GAssistPlugin:
     def _handle_input(
         self, params: Dict[str, Any], request_id: Any
     ) -> List[Dict[str, Any]]:
+        self.keep_session = False
         function = params.get("function")
         if function is None:
             if len(self._pending_input) == 1:
@@ -856,8 +879,8 @@ class GAssistPlugin:
         return self._complete(request_id, message=result.message)
 
     # ------------------------------------------------------------------ wire
-    @staticmethod
     def _complete(
+        self,
         request_id: Any,
         *,
         message: str,
@@ -868,6 +891,7 @@ class GAssistPlugin:
         Protocol V2 has no structured output channel (verified against NVIDIA's
         PROTOCOL_V2.md / migration guide / SDK / emulator + the live engine, which
         rejects dict payloads as unparseable)."""
+        self.keep_session = keep_session
         params = {
             "request_id": request_id,
             "success": True,
@@ -876,9 +900,9 @@ class GAssistPlugin:
         }
         return transport.notification("complete", params)
 
-    @staticmethod
-    def _complete_error(request_id: Any, exc: PluginError) -> Dict[str, Any]:
+    def _complete_error(self, request_id: Any, exc: PluginError) -> Dict[str, Any]:
         """Engine contract: error notification (code via errors.protocol_code_for)."""
+        self.keep_session = False
         params = {
             "request_id": request_id,
             "code": protocol_code_for(exc.code),
@@ -929,6 +953,69 @@ def run_plugin_loop(
 
     protocol.handler = handler
     return protocol.run()
+
+
+def _sdk_result(sdk_plugin: Any, core: "GAssistPlugin", messages: List[Dict[str, Any]]) -> str:
+    """Turn GAssistPlugin wire messages into an SDK handler return value.
+
+    ``complete`` becomes the returned NL string (and ``set_keep_session``).
+    ``error`` notifications become ``CommandFailed`` so the SDK loop can emit
+    the typed error notification instead of a generic plugin exception.
+    """
+    for message in messages:
+        if message.get("result") == {"acknowledged": True}:
+            continue
+        if message.get("method") == "complete":
+            params = message.get("params") or {}
+            keep = bool(params.get("keep_session"))
+            core.keep_session = keep
+            sdk_plugin.set_keep_session(keep)
+            data = params.get("data", "")
+            return data if isinstance(data, str) else str(data)
+        if message.get("method") == "error":
+            params = message.get("params") or {}
+            raise CommandFailed(int(params.get("code", -1)), str(params.get("message", "")))
+        if "error" in message:
+            err = message.get("error") or {}
+            raise CommandFailed(int(err.get("code", -32603)), str(err.get("message", "")))
+    sdk_plugin.set_keep_session(False)
+    core.keep_session = False
+    return ""
+
+
+def bind_sdk_plugin(sdk_plugin: Any, core: "GAssistPlugin") -> None:
+    """Register the 16 manifest commands plus ``on_input`` on a gassist_sdk Plugin.
+
+    Duck-typed so unit tests can bind a fake SDK object. ``on_input`` is a
+    passthrough handler and is not listed in manifest.json.
+    """
+    core.on_stream = sdk_plugin.stream
+
+    def dispatch(function: str, arguments: Dict[str, Any]) -> str:
+        messages = core.process(
+            "execute",
+            {"function": function, "arguments": arguments},
+            request_id=0,
+        )
+        return _sdk_result(sdk_plugin, core, messages)
+
+    for name in core.registered_functions():
+        description = core._functions_meta.get(name, "")
+
+        def handler(*_args: Any, _name: str = name, **kwargs: Any) -> str:
+            kwargs.pop("context", None)
+            kwargs.pop("system_info", None)
+            return dispatch(_name, kwargs)
+
+        handler.__name__ = name
+        handler.__doc__ = description
+        sdk_plugin.command(name, description=description)(handler)
+
+    def on_input(content: str = "") -> str:
+        messages = core.process("input", {"content": content}, request_id=0)
+        return _sdk_result(sdk_plugin, core, messages)
+
+    sdk_plugin.command("on_input")(on_input)
 
 
 def _state_message(state) -> str:

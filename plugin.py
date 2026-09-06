@@ -115,7 +115,22 @@ from afterburner.integration.macm import AfterburnerControlClient
 from afterburner.integration.mahm import AfterburnerMonitoringClient, find_install_dir
 from afterburner.integration.reconnect import ReconnectingAfterburner
 from afterburner.models import InterfaceStatus
-from afterburner.protocol.plugin import GAssistPlugin, build_services, run_plugin_loop
+from afterburner.protocol.plugin import (
+    CommandFailed,
+    GAssistPlugin,
+    bind_sdk_plugin,
+    build_services,
+    run_plugin_loop,
+)
+
+try:
+    from gassist_sdk import Plugin as GAssistSdkPlugin
+    from gassist_sdk.types import ErrorCode as SdkErrorCode
+    from gassist_sdk.types import JsonRpcResponse
+except ImportError:
+    GAssistSdkPlugin = None  # type: ignore[misc, assignment]
+    JsonRpcResponse = None  # type: ignore[misc, assignment]
+    SdkErrorCode = None  # type: ignore[misc, assignment]
 
 _INSTALL_PROFILES_CANDIDATES = (
     r"C:\Program Files (x86)\MSI Afterburner\Profiles",
