@@ -990,6 +990,7 @@ def bind_sdk_plugin(sdk_plugin: Any, core: "GAssistPlugin") -> None:
     passthrough handler and is not listed in manifest.json.
     """
     core.on_stream = sdk_plugin.stream
+    descriptions = {item["name"]: item["description"] for item in core.commands()}
 
     def dispatch(function: str, arguments: Dict[str, Any]) -> str:
         messages = core.process(
@@ -1000,7 +1001,7 @@ def bind_sdk_plugin(sdk_plugin: Any, core: "GAssistPlugin") -> None:
         return _sdk_result(sdk_plugin, core, messages)
 
     for name in core.registered_functions():
-        description = core._functions_meta.get(name, "")
+        description = descriptions.get(name, "")
 
         def handler(*_args: Any, _name: str = name, **kwargs: Any) -> str:
             kwargs.pop("context", None)

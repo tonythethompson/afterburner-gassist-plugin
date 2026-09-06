@@ -42,11 +42,21 @@ def test_resolve_log_path_rejects_an_unwritable_candidate(entry, tmp_path) -> No
     assert entry._resolve_log_path([bad]) is None
 
 
+def test_resolve_log_path_prefers_official_rise_dir(entry, tmp_path, monkeypatch) -> None:
+    official = tmp_path / "rise-plugins" / "afterburner.log"
+    official.parent.mkdir()
+    monkeypatch.setattr(entry, "_OFFICIAL_LOG_PATH", str(official))
+    path = entry._resolve_log_path()
+    assert path == str(official)
+
+
 def test_resolve_log_path_falls_back_to_tempdir(entry, tmp_path, monkeypatch) -> None:
     blocker = tmp_path / "not-a-dir"
     blocker.write_text("x", encoding="utf-8")
-    monkeypatch.setattr(entry, "_LOG_PATH", str(blocker / "afterburner.log"))
-    path = entry._resolve_log_path()  # default candidates: plugin dir, then temp dir
+    bad = str(blocker / "afterburner.log")
+    monkeypatch.setattr(entry, "_OFFICIAL_LOG_PATH", bad)
+    monkeypatch.setattr(entry, "_LOG_PATH", bad)
+    path = entry._resolve_log_path()  # official + plugin dir unwritable -> temp dir
     assert path is not None
     assert Path(path).parent.is_dir()
     # The fallback is actually writable.
@@ -57,7 +67,9 @@ def test_resolve_log_path_falls_back_to_tempdir(entry, tmp_path, monkeypatch) ->
 def test_setup_logging_never_raises_when_plugin_dir_unwritable(entry, tmp_path, monkeypatch) -> None:
     blocker = tmp_path / "not-a-dir"
     blocker.write_text("x", encoding="utf-8")
-    monkeypatch.setattr(entry, "_LOG_PATH", str(blocker / "afterburner.log"))
+    bad = str(blocker / "afterburner.log")
+    monkeypatch.setattr(entry, "_OFFICIAL_LOG_PATH", bad)
+    monkeypatch.setattr(entry, "_LOG_PATH", bad)
     try:
         entry._setup_logging()  # must not raise (falls back to the temp dir)
     finally:

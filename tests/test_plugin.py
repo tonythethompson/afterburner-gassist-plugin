@@ -425,6 +425,38 @@ class TestConfirmationFlow:
         assert fake.applied == []
 
 
+class TestSdkStreaming:
+    def test_diagnose_streams_progress_then_returns_summary(self) -> None:
+        fake, plugin, _ = make_plugin()
+        streamed: list[str] = []
+        plugin.on_stream = streamed.append
+        complete = complete_params(execute(plugin, "diagnose_performance"))
+        assert streamed == ["Checking live GPU telemetry..."]
+        assert complete["success"] is True
+        assert "classified:" in complete["data"]
+
+    def test_optimize_quiet_streams_then_prompts_for_confirmation(self) -> None:
+        fake, plugin, _ = make_plugin()
+        streamed: list[str] = []
+        plugin.on_stream = streamed.append
+        complete = complete_params(execute(plugin, "optimize_quiet"))
+        assert complete["keep_session"] is True
+        assert streamed
+        assert "Reply 'confirm'" in streamed[0]
+        assert complete["data"] == streamed[0]
+        assert fake.applied == []
+
+    def test_risky_write_streams_the_confirmation_prompt(self) -> None:
+        fake, plugin, _ = make_plugin()
+        streamed: list[str] = []
+        plugin.on_stream = streamed.append
+        complete = complete_params(execute(plugin, "set_power_limit", {"percent": 110}))
+        assert complete["keep_session"] is True
+        assert streamed
+        assert "118" in streamed[0] or "110" in streamed[0]
+        assert "Reply 'confirm'" in complete["data"]
+
+
 class TestFullLoop:
     def test_framed_loop_end_to_end(self) -> None:
         fake, plugin, clock = make_plugin()

@@ -57,19 +57,31 @@ if os.path.isdir(_LIBS_DIR) and _LIBS_DIR not in sys.path:
 # per-plugin log file (same convention as NVIDIA's reference plugins: rise\plugins\
 # <name>\<name>.log). Never print or log to stdout/stderr from this process.
 _LOG_PATH = os.path.join(_PLUGIN_DIR, "afterburner.log")
+_OFFICIAL_PLUGIN_DIR = os.path.join(
+    os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+    "NVIDIA Corporation",
+    "nvtopps",
+    "rise",
+    "plugins",
+    "afterburner",
+)
+_OFFICIAL_LOG_PATH = os.path.join(_OFFICIAL_PLUGIN_DIR, "afterburner.log")
 logger = logging.getLogger("afterburner.plugin")
 
 
 def _resolve_log_path(
     candidates: Optional[Sequence[str]] = None,
 ) -> Optional[str]:
-    """First writable log location: the plugin dir, then the user temp dir.
+    """First writable log location: official RISE plugin dir, then this folder, then temp.
 
-    The RISE plugins directory is admin-owned, so a non-elevated plugin process cannot
-    create its log there — logging must never take the process down (Property 7).
-    Returns None when nothing is writable (logging disabled).
+    NVIDIA's Plugin Builder logs to
+    ``%PROGRAMDATA%\\NVIDIA Corporation\\nvtopps\\rise\\plugins\\<plugin>\\<plugin>.log``.
+    That directory is admin-owned, so a non-elevated process often cannot create the
+    file there. Fall back instead of raising (Property 7). Returns None when nothing
+    is writable (logging disabled).
     """
     for candidate in candidates or (
+        _OFFICIAL_LOG_PATH,
         _LOG_PATH,
         os.path.join(tempfile.gettempdir(), "afterburner.log"),
     ):
@@ -125,8 +137,7 @@ from afterburner.protocol.plugin import (
 
 try:
     from gassist_sdk import Plugin as GAssistSdkPlugin
-    from gassist_sdk.types import ErrorCode as SdkErrorCode
-    from gassist_sdk.types import JsonRpcResponse
+    from gassist_sdk.types import ErrorCode as SdkErrorCode, JsonRpcResponse
 except ImportError:
     GAssistSdkPlugin = None  # type: ignore[misc, assignment]
     JsonRpcResponse = None  # type: ignore[misc, assignment]
@@ -221,6 +232,84 @@ def build_entry_plugin(*, clock=None) -> GAssistPlugin:
     )
 
 
+def run_sdk_loop(core: GAssistPlugin) -> int:
+    """Run the official gassist_sdk Plugin loop (framing, ping, stream, input).
+
+    Defined only when ``gassist_sdk`` is importable (vendored into ``libs/``).
+    Typed ``CommandFailed`` errors keep the existing error-notification codes.
+    """
+    if GAssistSdkPlugin is None or JsonRpcResponse is None or SdkErrorCode is None:
+        raise RuntimeError("gassist_sdk is not available")
+
+    class AfterburnerSdkPlugin(GAssistSdkPlugin):
+        def __init__(self, domain: GAssistPlugin) -> None:
+            super().__init__(domain.name, domain.version, domain.description)
+            self._core = domain
+            bind_sdk_plugin(self, domain)
+
+        def _handle_initialize(self, request) -> None:
+            self._core.initialize(request.params or {})
+            super()._handle_initialize(request)
+
+        def _handle_execute(self, request) -> None:
+            params = request.params or {}
+            function_name = params.get("function", "")
+            arguments = params.get("arguments", {})
+            cmd = self._commands.get(function_name)
+            if cmd is None:
+                response = JsonRpcResponse.make_error(
+                    request.id,
+                    SdkErrorCode.METHOD_NOT_FOUND,
+                    f"Unknown command: {function_name}",
+                )
+                self._protocol.send_response(response)
+                return
+            self._current_request_id = request.id
+            self._keep_session = False
+            try:
+                result = self._call_handler(cmd.handler, arguments, None, None)
+                self._send_complete(request.id, True, result, self._keep_session)
+            except CommandFailed as exc:
+                self._send_error(request.id, exc.code, exc.message)
+            except Exception:
+                logger.exception("Command execution error")
+                self._send_error(
+                    request.id, SdkErrorCode.PLUGIN_ERROR, "command failed"
+                )
+            finally:
+                self._current_request_id = None
+
+        def _handle_input(self, request) -> None:
+            params = request.params or {}
+            content = params.get("content", "")
+            self._protocol.send_response(
+                JsonRpcResponse.success(request.id, {"acknowledged": True})
+            )
+            self._current_request_id = request.id
+            self._keep_session = False
+            try:
+                handler = self._commands.get("on_input")
+                if handler is None:
+                    self._send_complete(
+                        request.id, True, f"Received: {content}", False
+                    )
+                    return
+                result = self._call_handler(
+                    handler.handler, {"content": content}, None, None
+                )
+                self._send_complete(request.id, True, result, self._keep_session)
+            except CommandFailed as exc:
+                self._send_error(request.id, exc.code, exc.message)
+            except Exception:
+                logger.exception("Input handling error")
+                self._send_error(request.id, SdkErrorCode.PLUGIN_ERROR, "input failed")
+            finally:
+                self._current_request_id = None
+
+    AfterburnerSdkPlugin(core).run()
+    return 0
+
+
 def _wire_trace(side: str, payload) -> None:
     """Full wire transcript -> afterburner.log (engine debugging; never the wire channel)."""
     text = json.dumps(payload, ensure_ascii=False, default=str)
@@ -245,7 +334,12 @@ def main() -> int:
         len(plugin.registered_functions()),
     )
     try:
-        rc = run_plugin_loop(plugin, trace=_wire_trace)
+        if GAssistSdkPlugin is not None:
+            logger.info("using gassist_sdk Plugin loop")
+            rc = run_sdk_loop(plugin)
+        else:
+            logger.info("gassist_sdk not vendored; using stdlib Protocol V2 loop")
+            rc = run_plugin_loop(plugin, trace=_wire_trace)
         logger.info("message loop exited rc=%s", rc)
         return rc
     except KeyboardInterrupt:  # pragma: no cover - interactive stop
