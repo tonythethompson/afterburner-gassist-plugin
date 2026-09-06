@@ -31,7 +31,8 @@ derived from function arguments or file contents.
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Tuple
+import math
+from typing import List, Mapping, Optional, Sequence, Tuple
 
 from ..integration.client import AfterburnerClient
 from ..integration.profiles import (
@@ -212,6 +213,7 @@ class ProfileManager:
                 id=s.slot,
                 name=f"Profile {s.slot}",
                 is_active=(s.slot == active_id),
+                summary=describe_stored_settings(s.values),
             )
             for s in present
         )
@@ -434,9 +436,65 @@ class ProfileManager:
 
 
 # --------------------------------------------------------------------------- matching
-def _finite(value: float) -> bool:
-    import math
+def describe_stored_settings(values: Mapping[str, str]) -> str:
+    """NL summary of one slot's stored keys. Never dumps the VFCurve hex blob."""
+    parts: List[str] = []
+    power = _optional_float(values.get("PowerLimit"))
+    if power is not None:
+        parts.append(f"power {power:g}%")
+    core = _optional_float(values.get("CoreClkBoost"))
+    if core is not None:
+        parts.append(f"core {_signed_mhz(core * 0.001)}")
+    memory = _optional_float(values.get("MemClkBoost"))
+    if memory is not None:
+        parts.append(f"memory {_signed_mhz(memory * 0.001)}")
+    voltage = _optional_float(values.get("CoreVoltageBoost"))
+    if voltage is not None:
+        parts.append(f"voltage boost {voltage:g}")
+    thermal = _optional_float(values.get("ThermalLimit"))
+    if thermal is not None:
+        parts.append(f"thermal limit {thermal:g} C")
+    fan = _fan_summary(values)
+    if fan is not None:
+        parts.append(fan)
+    if values.get("VFCurve"):
+        parts.append("VF curve stored")
+    return ", ".join(parts)
 
+
+def _optional_float(raw: Optional[str]) -> Optional[float]:
+    if raw is None or raw == "":
+        return None
+    try:
+        number = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _signed_mhz(value: float) -> str:
+    if value > 0:
+        return f"+{value:g} MHz"
+    return f"{value:g} MHz"
+
+
+def _fan_summary(values: Mapping[str, str]) -> Optional[str]:
+    mode_raw = values.get("FanMode")
+    speed = _optional_float(values.get("FanSpeed"))
+    if mode_raw is None and speed is None:
+        return None
+    if mode_raw is not None and _fan_mode_is_fixed(mode_raw):
+        if speed is not None:
+            return f"fan {speed:g}% fixed"
+        return "fan fixed"
+    if mode_raw is not None:
+        if speed is not None:
+            return f"fan mode {mode_raw}, {speed:g}%"
+        return f"fan mode {mode_raw}"
+    return f"fan {speed:g}%"
+
+
+def _finite(value: float) -> bool:
     return math.isfinite(value)
 
 

@@ -60,7 +60,7 @@
     },
     {
       "name": "get_profiles",
-      "description": "List Afterburner profiles and indicate which one is active.",
+      "description": "List Afterburner profiles by number with each slot's stored power, clock offsets, fan, voltage boost, thermal limit, and whether a VF curve is saved. Shows plugin nicknames when set. Optionally filter to one profile.",
       "tags": [
         "gpu",
         "profiles",
@@ -70,6 +70,10 @@
         "gpu_index": {
           "type": "integer",
           "description": "Which GPU (default 0)."
+        },
+        "profile_id": {
+          "type": "integer",
+          "description": "Optional profile number (1-5) to show only that slot."
         }
       },
       "required": []
@@ -117,11 +121,34 @@
         },
         "profile_id": {
           "type": "integer",
-          "description": "Profile number (1-5) or profile name to load."
+          "description": "Profile number (1-5), Afterburner name like Profile 1, or a plugin nickname."
         }
       },
       "required": [
         "profile_id"
+      ]
+    },
+    {
+      "name": "set_profile_nickname",
+      "description": "Save a plugin-local nickname for an Afterburner profile slot (for example 'quiet' or 'gaming') so later list and load commands can use that name. Does not change Afterburner. Pass an empty nickname to clear it.",
+      "tags": [
+        "gpu",
+        "profiles",
+        "nickname"
+      ],
+      "properties": {
+        "profile_id": {
+          "type": "integer",
+          "description": "Profile number (1-5) or current nickname to rename."
+        },
+        "nickname": {
+          "type": "string",
+          "description": "Label to remember this slot by. Empty string clears the nickname."
+        }
+      },
+      "required": [
+        "profile_id",
+        "nickname"
       ]
     },
     {

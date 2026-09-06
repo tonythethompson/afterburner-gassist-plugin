@@ -25,7 +25,7 @@ host, risky functions prompt (never write) and are cancelled via ``input``.
 The two write-applying low-risk functions (``load_profile``, ``reset_tuning``) are
 included by DEFAULT only in a degraded environment (Afterburner absent/unreachable,
 where every write path fails fast as a typed error before touching hardware) and
-skipped when Afterburner is live — so the gate keeps full 16-function coverage in CI
+skipped when Afterburner is live — so the gate keeps full 17-function coverage in CI
 while staying safe to run on a real machine. ``--allow-writes`` forces them everywhere.
 
 Usage:
@@ -56,7 +56,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # The two low-risk functions that APPLY writes without a confirmation prompt. Executing
 # them against a live Afterburner changes the user's tuning, so the gate skips them by
 # default; CI runners never have Afterburner, so --allow-writes is safe there.
-WRITE_APPLYING = frozenset({"load_profile", "reset_tuning"})
+WRITE_APPLYING = frozenset({"load_profile", "reset_tuning", "set_profile_nickname"})
 
 # Function arguments the sweep executes. Keys not listed get {"gpu_index": 0}.
 FUNCTION_ARGS: dict = {
@@ -69,6 +69,7 @@ FUNCTION_ARGS: dict = {
     "optimize_thermal": {"target_c": 70, "gpu_index": 0},
     "load_profile": {"profile_id": 1, "gpu_index": 0},
     "reset_tuning": {"gpu_index": 0},
+    "set_profile_nickname": {"profile_id": 1, "nickname": "quiet", "gpu_index": 0},
 }
 
 # Protocol-level failures (as opposed to typed domain errors like "Afterburner isn't
@@ -172,8 +173,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     expected = {f["name"] for f in manifest["functions"]}
-    if len(expected) != 16:
-        print(f"check_emulator: expected 16 manifest functions, found {len(expected)}",
+    if len(expected) != 17:
+        print(f"check_emulator: expected 17 manifest functions, found {len(expected)}",
               file=sys.stderr)
         return 2
 

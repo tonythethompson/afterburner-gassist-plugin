@@ -17,6 +17,7 @@ from afterburner.models import (
     Range,
     TuningState,
 )
+from afterburner.services.profiles import describe_stored_settings
 
 from profiles_util import (
     apply_recorder,
@@ -44,6 +45,13 @@ class TestListProfiles:
         assert [p.id for p in profiles] == [1, 2, 3]
         assert [p.name for p in profiles] == ["Profile 1", "Profile 2", "Profile 3"]
         assert [p.is_active for p in profiles] == [True, False, False]
+        assert "power 100%" in profiles[0].summary
+        assert "core +95 MHz" in profiles[0].summary
+        assert "memory +200 MHz" in profiles[0].summary
+        assert "fan 31% fixed" in profiles[0].summary
+        assert "VF curve stored" in profiles[0].summary
+        assert "memory +400 MHz" in profiles[1].summary
+        assert "memory +600 MHz" in profiles[2].summary
 
     def test_other_slot_can_be_active(self, tmp_path) -> None:
         fake = default_fake(tuning=slot_tuning(memory_offset_mhz=600.0))  # slot 3
@@ -85,6 +93,28 @@ class TestListProfiles:
         fake = default_fake()
         manager = manager_for(fake, sandbox_copy("empty_slots", tmp_path))
         assert manager.get_profiles() == []
+
+
+class TestDescribeStoredSettings:
+    def test_includes_thermal_limit_and_skips_empty_vf(self) -> None:
+        text = describe_stored_settings(
+            {
+                "PowerLimit": "80",
+                "ThermalLimit": "75",
+                "CoreClkBoost": "-350000",
+                "CoreVoltageBoost": "0",
+            }
+        )
+        assert text == (
+            "power 80%, core -350 MHz, voltage boost 0, thermal limit 75 C"
+        )
+        assert "VF curve" not in text
+
+    def test_reports_vf_curve_without_dumping_hex(self) -> None:
+        text = describe_stored_settings({"VFCurve": "010002007F000000deadbeef"})
+        assert text == "VF curve stored"
+        assert "deadbeef" not in text
+        assert "01000200" not in text
 
 
 class TestLoadProfile:

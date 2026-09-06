@@ -1022,10 +1022,11 @@ acting.
 | `get_gpu_status` | low | "Report current GPU status: temperature, clocks, utilization, power, fan speed, memory usage." |
 | `get_gpu_limits` | low | "Show the supported tuning ranges (min/max power, clock offsets, fan) reported by Afterburner." |
 | `get_tuning_state` | low | "Show the GPU's current tuning: power limit, core/memory offsets, voltage, fan mode." |
-| `get_profiles` | low | "List Afterburner profiles and indicate which one is active." |
+| `get_profiles` | low | "List Afterburner profiles by number with stored power, clock offsets, fan, voltage boost, thermal limit, and whether a VF curve is saved." |
 | `show_configuration` | low | "Summarize the detected Afterburner setup, interface status, and available controls." |
 | `get_tuning_ownership` | low | "Explain who owns the GPU's tuning state: what Afterburner is currently applying (and whether a profile or startup auto-apply is active), noting that NVIDIA App / G-Assist tuning cannot be seen through Afterburner." |
-| `load_profile` | low | "Load an existing Afterburner profile by name or number." |
+| `load_profile` | low | "Load an existing Afterburner profile by number, Afterburner name, or plugin nickname." |
+| `set_profile_nickname` | low | "Save a plugin-local nickname for a profile slot. Does not change Afterburner." |
 | `reset_tuning` | low | "Reset GPU tuning back to default / stock settings." |
 | `set_power_limit` | high | "Set the GPU power limit as a percentage, within supported limits." |
 | `set_core_offset` | high | "Adjust the GPU core clock offset in MHz, within supported limits." |
@@ -1088,7 +1089,9 @@ END
 
 - **Risky** (require confirmation): `set_power_limit`, `set_core_offset`, `set_memory_offset`,
   `set_fan_percent`, `set_fan_curve`, `optimize_*`.
-- **Low-friction** (no confirmation): all reads, `reset_tuning`, `load_profile`.
+- **Low-friction** (no confirmation): all reads, `reset_tuning`, `load_profile`,
+  `set_profile_nickname` (plugin-local labels in plugin `config.json`, never Afterburner's
+  Profiles directory).
 - Confirmation prompts for tuning writes carry **ownership context**: they name the Afterburner
   value the change replaces **as read when the request is processed** (decision time) and warn
   that external tuning authorities (NVIDIA App Automatic Tuning, G-Assist native tuning, other

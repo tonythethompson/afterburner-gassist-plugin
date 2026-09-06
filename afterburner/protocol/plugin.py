@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import math
 import time as _time
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -51,6 +51,7 @@ from ..safety.capabilities import HardwareCapabilityResolver
 from ..safety.policy import SafetyPolicy
 from ..safety.validator import TuningValidator
 from ..services.diagnostics import DiagnosticsService
+from ..services.nicknames import ProfileNicknames
 from ..services.optimize import OptimizeService
 from ..services.ownership import TuningOwnershipService
 from ..services.profiles import ProfileManager
@@ -79,6 +80,7 @@ class PluginServices:
     optimize: OptimizeService
     diagnostics: DiagnosticsService
     policy: SafetyPolicy
+    nicknames: ProfileNicknames
 
 
 def build_services(
@@ -89,6 +91,7 @@ def build_services(
     tolerance: float = 1.0,
     optimize_read_interval_s: float = 0.0,
     optimize_verify_timeout_s: float = 30.0,
+    config_path: Optional[Path] = None,
 ) -> PluginServices:
     """Assemble the domain stack around one AfterburnerInterface (mock or real).
 
@@ -109,6 +112,7 @@ def build_services(
     )
     diagnostics = DiagnosticsService(telemetry)
     policy = SafetyPolicy(clock=clock)
+    nicknames = ProfileNicknames(config_path)
     return PluginServices(
         client=client,
         telemetry=telemetry,
@@ -119,6 +123,7 @@ def build_services(
         optimize=optimize,
         diagnostics=diagnostics,
         policy=policy,
+        nicknames=nicknames,
     )
 
 
@@ -382,7 +387,19 @@ class GAssistPlugin:
             return ExecResult(message=_state_message(state), data=state)
 
         def get_profiles(args: Dict[str, Any], gpu: int) -> ExecResult:
-            profiles = s.profiles.get_profiles(gpu)
+            profiles = [
+                _with_nickname(p, s.nicknames.get(p.id))
+                for p in s.profiles.get_profiles(gpu)
+            ]
+            raw = args.get("profile_id", args.get("name"))
+            if raw is not None:
+                profile_id = self._resolve_profile_ref(raw)
+                profiles = [p for p in profiles if p.id == profile_id]
+                if not profiles:
+                    raise PluginError(
+                        ErrorCode.INVALID_VALUE,
+                        f"There's no Afterburner profile {profile_id}.",
+                    )
             if not profiles:
                 return ExecResult(
                     message="No Afterburner profiles are saved.",
@@ -391,11 +408,15 @@ class GAssistPlugin:
             labels = []
             active_id = None
             for profile in profiles:
-                active_id = profile.id if profile.is_active else active_id
-                labels.append(
-                    f"{profile.name}" + (" (active)" if profile.is_active else "")
-                )
-            message = "Profiles: " + ", ".join(labels)
+                if profile.is_active:
+                    active_id = profile.id
+                mark = " (active)" if profile.is_active else ""
+                title = _profile_label(profile)
+                if profile.summary:
+                    labels.append(f"{title}{mark}: {profile.summary}")
+                else:
+                    labels.append(f"{title}{mark}")
+            message = "Profiles: " + ". ".join(labels) + "."
             return ExecResult(
                 message=message,
                 data={"profiles": profiles, "active_profile_id": active_id},
@@ -433,11 +454,29 @@ class GAssistPlugin:
 
         def load_profile(args: Dict[str, Any], gpu: int) -> ExecResult:
             raw = args.get("profile_id", args.get("name"))
-            profile_id = _parse_profile_ref(raw)
+            profile_id = self._resolve_profile_ref(raw)
             result = s.profiles.load_profile(profile_id, gpu)
+            nick = s.nicknames.get(profile_id)
+            message = result.message
+            if nick and message.startswith(f"Profile {profile_id} "):
+                message = f'Profile {profile_id} "{nick}" ' + message[len(f"Profile {profile_id} "):]
             return ExecResult(
-                message=result.message,
+                message=message,
                 data={"profile_id": profile_id, "applied": True},
+            )
+
+        def set_profile_nickname(args: Dict[str, Any], gpu: int) -> ExecResult:
+            raw = args.get("profile_id", args.get("name"))
+            if "nickname" not in args:
+                raise PluginError(
+                    ErrorCode.INVALID_VALUE,
+                    "Please provide a nickname, or an empty nickname to clear it.",
+                )
+            profile_id = self._resolve_profile_ref(raw)
+            message = s.nicknames.set_nickname(profile_id, str(args.get("nickname", "")))
+            return ExecResult(
+                message=message,
+                data={"profile_id": profile_id, "nickname": s.nicknames.get(profile_id)},
             )
 
         def reset_tuning(args: Dict[str, Any], gpu: int) -> ExecResult:
@@ -493,6 +532,7 @@ class GAssistPlugin:
             "get_tuning_ownership": get_tuning_ownership,
             "show_configuration": show_configuration,
             "load_profile": load_profile,
+            "set_profile_nickname": set_profile_nickname,
             "reset_tuning": reset_tuning,
             "diagnose_performance": diagnose,
             "set_power_limit": set_value,
@@ -790,6 +830,14 @@ class GAssistPlugin:
     def _gpu_of_args(self, args: Dict[str, Any]) -> int:
         return _gpu_of(args)
 
+    def _resolve_profile_ref(self, raw: Any) -> int:
+        """Slot number, 'Profile N', or a plugin-local nickname."""
+        if isinstance(raw, str):
+            slot = self.services.nicknames.resolve(raw)
+            if slot is not None:
+                return slot
+        return _parse_profile_ref(raw)
+
     def _decision_time_noop(
         self, function: str, args: Dict[str, Any], gpu: int
     ) -> Optional[float]:
@@ -984,7 +1032,7 @@ def _sdk_result(sdk_plugin: Any, core: "GAssistPlugin", messages: List[Dict[str,
 
 
 def bind_sdk_plugin(sdk_plugin: Any, core: "GAssistPlugin") -> None:
-    """Register the 16 manifest commands plus ``on_input`` on a gassist_sdk Plugin.
+    """Register the 17 manifest commands plus ``on_input`` on a gassist_sdk Plugin.
 
     Duck-typed so unit tests can bind a fake SDK object. ``on_input`` is a
     passthrough handler and is not listed in manifest.json.
@@ -1034,6 +1082,18 @@ def _state_message(state) -> str:
     else:
         parts.append(f"fan mode {state.fan_mode}")
     return "Current tuning: " + ", ".join(parts)
+
+
+def _profile_label(profile) -> str:
+    if profile.nickname:
+        return f'{profile.name} "{profile.nickname}"'
+    return profile.name
+
+
+def _with_nickname(profile, nickname: Optional[str]):
+    if not nickname:
+        return profile
+    return replace(profile, nickname=nickname)
 
 
 def _parse_profile_ref(raw: Any) -> int:

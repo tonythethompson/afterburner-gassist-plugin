@@ -31,7 +31,7 @@ def _registered() -> set:
 class TestManifestSurface:
     def test_every_registered_function_is_declared(self) -> None:
         assert BY_NAME.keys() == _registered()
-        assert len(FUNCTIONS) == 16
+        assert len(FUNCTIONS) == 17
 
     def test_top_level_shape_matches_protocol_v2(self) -> None:
         assert MANIFEST["manifestVersion"] == 1
@@ -72,6 +72,7 @@ class TestManifestSurface:
             "set_fan_curve": {"points"},
             "optimize_thermal": {"target_c"},
             "load_profile": {"profile_id"},
+            "set_profile_nickname": {"profile_id", "nickname"},
         }
         for name, required_args in expected_args.items():
             fn = BY_NAME[name]

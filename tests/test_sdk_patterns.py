@@ -26,6 +26,7 @@ MANIFEST_FUNCTIONS = (
     "get_tuning_ownership",
     "show_configuration",
     "load_profile",
+    "set_profile_nickname",
     "reset_tuning",
     "set_power_limit",
     "set_core_offset",

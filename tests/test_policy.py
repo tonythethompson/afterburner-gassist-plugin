@@ -42,7 +42,8 @@ class TestRiskClassification:
     def test_low_risk_functions(self) -> None:
         policy, _ = make_policy()
         for fn in ("get_gpu_status", "get_tuning_state", "get_profiles",
-                   "load_profile", "reset_tuning", "diagnose_performance"):
+                   "load_profile", "reset_tuning", "diagnose_performance",
+                   "set_profile_nickname"):
             assert policy.risk_for(fn) is RiskLevel.LOW
             assert not policy.requires_confirmation(fn)
 

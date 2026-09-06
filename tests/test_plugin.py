@@ -140,7 +140,7 @@ class TestLifecycle:
             "get_tuning_ownership", "show_configuration", "load_profile",
             "reset_tuning", "set_power_limit", "set_core_offset", "set_memory_offset",
             "set_fan_percent", "set_fan_curve", "optimize_quiet", "optimize_thermal",
-            "diagnose_performance",
+            "diagnose_performance", "set_profile_nickname",
         ):
             assert name in command_names
         assert plugin.initialized is True
@@ -244,6 +244,89 @@ class TestDispatch:
         assert complete["success"] is True
         assert isinstance(complete["data"], str)
         assert "MSI Afterburner: ok" in complete["data"]
+
+    def test_get_profiles_lists_stored_settings_per_slot(self) -> None:
+        fake, plugin, _ = make_plugin()
+        complete = complete_params(execute(plugin, "get_profiles"))
+        assert complete["success"] is True
+        text = complete["data"]
+        assert "Profile 1" in text
+        assert "power 100%" in text
+        assert "core +95 MHz" in text
+        assert "memory +200 MHz" in text
+        assert "memory +400 MHz" in text
+        assert "memory +600 MHz" in text
+        assert "fan 31% fixed" in text
+        assert "VF curve stored" in text
+        assert "01000200" not in text
+
+    def test_get_profiles_can_filter_to_one_slot(self) -> None:
+        fake, plugin, _ = make_plugin()
+        complete = complete_params(execute(plugin, "get_profiles", {"profile_id": 2}))
+        assert complete["success"] is True
+        text = complete["data"]
+        assert "Profile 2" in text
+        assert "memory +400 MHz" in text
+        assert "Profile 1" not in text
+        assert "Profile 3" not in text
+
+    def test_get_profiles_unknown_slot_is_typed_error(self) -> None:
+        fake, plugin, _ = make_plugin()
+        params = error_notification(execute(plugin, "get_profiles", {"profile_id": 5}))
+        assert params["code"] == protocol_code_for(ErrorCode.INVALID_VALUE)
+        assert "profile 5" in params["message"]
+
+
+class TestProfileNicknames:
+    def test_set_nickname_is_low_risk_and_shows_in_list(self) -> None:
+        fake, plugin, _ = make_plugin()
+        complete = complete_params(
+            execute(plugin, "set_profile_nickname", {"profile_id": 1, "nickname": "quiet"})
+        )
+        assert complete["success"] is True
+        assert complete["keep_session"] is False
+        assert "quiet" in complete["data"]
+        listed = complete_params(execute(plugin, "get_profiles", {}, 2))
+        assert 'Profile 1 "quiet"' in listed["data"]
+        filtered = complete_params(
+            execute(plugin, "get_profiles", {"profile_id": "quiet"}, 3)
+        )
+        assert "Profile 1" in filtered["data"]
+        assert "Profile 2" not in filtered["data"]
+
+    def test_load_profile_accepts_nickname(self) -> None:
+        fake, plugin, _ = make_plugin()
+        from profiles_util import apply_recorder
+
+        apply_recorder(fake)
+        execute(plugin, "set_profile_nickname", {"profile_id": 1, "nickname": "quiet"})
+        complete = complete_params(
+            execute(plugin, "load_profile", {"profile_id": "quiet"}, 2)
+        )
+        assert complete["success"] is True
+        assert "quiet" in complete["data"]
+        assert (0, ControlFeature.POWER_LIMIT, 100.0) in {
+            (g, f, v) for (g, f, v) in fake.applied
+        }
+
+    def test_duplicate_nickname_is_rejected(self) -> None:
+        fake, plugin, _ = make_plugin()
+        execute(plugin, "set_profile_nickname", {"profile_id": 1, "nickname": "quiet"})
+        params = error_notification(
+            execute(plugin, "set_profile_nickname", {"profile_id": 2, "nickname": "Quiet"})
+        )
+        assert params["code"] == protocol_code_for(ErrorCode.INVALID_VALUE)
+        assert "already used" in params["message"]
+
+    def test_empty_nickname_clears_label(self) -> None:
+        fake, plugin, _ = make_plugin()
+        execute(plugin, "set_profile_nickname", {"profile_id": 1, "nickname": "quiet"})
+        complete = complete_params(
+            execute(plugin, "set_profile_nickname", {"profile_id": 1, "nickname": ""})
+        )
+        assert "Cleared" in complete["data"]
+        listed = complete_params(execute(plugin, "get_profiles", {}, 2))
+        assert '"quiet"' not in listed["data"]
 
 
 class TestLoadProfileAndReset:
@@ -509,7 +592,7 @@ READ_FUNCTIONS = (
     "show_configuration",
     "diagnose_performance",
 )
-CONTROL_FUNCTIONS = ("set_power_limit", "load_profile", "reset_tuning")
+CONTROL_FUNCTIONS = ("set_power_limit", "load_profile", "reset_tuning", "set_profile_nickname")
 
 
 class TestProperty7GracefulDegradation:

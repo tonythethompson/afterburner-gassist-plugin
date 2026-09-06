@@ -94,6 +94,31 @@ def _resolve_log_path(
     return None
 
 
+def _resolve_config_path() -> Path:
+    """Plugin config.json: official RISE dir if writable, else this folder.
+
+    Nicknames are plugin-local and must never be written under Afterburner's Profiles
+    directory. The chosen path may still fail on write; set_profile_nickname then
+    returns a typed ACCESS_DENIED.
+    """
+    candidates = (
+        Path(_OFFICIAL_PLUGIN_DIR) / "config.json",
+        Path(_PLUGIN_DIR) / "config.json",
+    )
+    for path in candidates:
+        parent = path.parent
+        try:
+            parent.mkdir(parents=True, exist_ok=True)
+            probe = parent / ".afterburner-config-probe"
+            with open(probe, "w", encoding="utf-8"):
+                pass
+            probe.unlink()
+            return path
+        except OSError:
+            continue
+    return candidates[-1]
+
+
 def _setup_logging() -> None:
     path = _resolve_log_path()
     if path is None:  # pragma: no cover - needs an unwritable temp dir
@@ -221,6 +246,7 @@ def build_entry_plugin(*, clock=None) -> GAssistPlugin:
         profiles_dir,
         clock=clock,
         optimize_read_interval_s=1.0,  # real read-back cadence between fan polls
+        config_path=_resolve_config_path(),
     )
     return GAssistPlugin(
         services,

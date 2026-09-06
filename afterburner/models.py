@@ -177,6 +177,8 @@ class Profile:
     name: str  # derived label "Profile N" (Afterburner stores no names)
     is_active: bool = False  # set only via control-state read-back match — never guessed
     kind: str = "hardware"  # "hardware" | "user" ("user" reserved)
+    summary: str = ""  # stored OC/fan/voltage settings, NL; never the VF hex blob
+    nickname: Optional[str] = None  # plugin-local label; never stored in Afterburner
 
 
 @dataclass(frozen=True)

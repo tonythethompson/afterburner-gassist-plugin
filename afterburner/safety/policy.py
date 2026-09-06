@@ -1,7 +1,8 @@
 """Risk classification & confirmation-token lifecycle (design Confirmation Flow).
 
-Risky (HIGH) functions require explicit confirmation: set_*, optimize_*. Everything else —
-reads, reset_tuning, load_profile — is LOW and bypasses confirmation.
+Risky (HIGH) functions require explicit confirmation: hardware set_* / optimize_*.
+Reads, reset_tuning, load_profile, and set_profile_nickname (plugin-local labels only)
+are LOW and bypass confirmation.
 
 Tokens are single-use, expire after CONFIRM_TOKEN_TTL_SECONDS (300 s), and `validate_token`
 rejects missing, expired, or reused tokens (raising CONFIRMATION_REQUIRED). Pending
@@ -44,6 +45,7 @@ LOW_RISK_FUNCTIONS = frozenset(
         # Low-friction applies
         "load_profile",
         "reset_tuning",
+        "set_profile_nickname",
     }
 )
 

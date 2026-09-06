@@ -110,15 +110,18 @@ detects your installed copy of Afterburner at runtime; nothing is installed syst
 Try these in G-Assist once the plugin is installed and Afterburner is running:
 
 - "What's my GPU temperature and fan speed right now?"
+- "What is in each Afterburner profile?"
+- "Call profile 1 quiet, then load quiet."
 - "Make my GPU quieter."
 - "Keep my GPU below 70 degrees."
 - "What's controlling my GPU overclock right now?"
 - "Why is my GPU clock dropping during my game?"
 - "Raise my power limit to 90 percent."
 
-The full 16-function surface behind these prompts: monitoring reads (`get_gpu_status`,
+The full 17-function surface behind these prompts: monitoring reads (`get_gpu_status`,
 `get_gpu_limits`, `get_tuning_state`, `get_profiles`, `show_configuration`,
-`get_tuning_ownership`), profile control (`load_profile`, `reset_tuning`), capability-gated
+`get_tuning_ownership`), profile control (`load_profile`, `reset_tuning`,
+`set_profile_nickname`), capability-gated
 tuning writes that require confirmation when risky (`set_power_limit`, `set_core_offset`,
 `set_memory_offset`, `set_fan_percent`, `set_fan_curve`, `optimize_quiet`, `optimize_thermal`),
 and evidence-based diagnostics (`diagnose_performance`).
