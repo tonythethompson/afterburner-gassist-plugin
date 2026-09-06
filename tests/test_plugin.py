@@ -139,8 +139,8 @@ class TestLifecycle:
             "get_gpu_status", "get_gpu_limits", "get_tuning_state", "get_profiles",
             "get_tuning_ownership", "show_configuration", "load_profile",
             "reset_tuning", "set_power_limit", "set_core_offset", "set_memory_offset",
-            "set_fan_percent", "set_fan_curve", "optimize_quiet", "optimize_thermal",
-            "diagnose_performance",
+            "set_fan_percent", "set_fan_auto", "set_fan_curve", "optimize_quiet",
+            "optimize_thermal", "diagnose_performance", "list_gpus",
         ):
             assert name in command_names
         assert plugin.initialized is True
@@ -244,6 +244,47 @@ class TestDispatch:
         assert complete["success"] is True
         assert isinstance(complete["data"], str)
         assert "MSI Afterburner: ok" in complete["data"]
+
+    def test_list_gpus_reports_every_adapter(self) -> None:
+        fake, plugin, _ = make_plugin()
+        fake.set_telemetry(
+            GpuTelemetry(gpu_index=1, gpu_name="Second GPU", temperature_c=55.0)
+        )
+        complete = complete_params(execute(plugin, "list_gpus"))
+        assert complete["success"] is True
+        assert complete["keep_session"] is False
+        assert "2 GPUs: 0 Fake, 1 Second GPU" in complete["data"]
+
+    def test_get_profiles_lists_stored_settings_per_slot(self) -> None:
+        fake, plugin, _ = make_plugin()
+        complete = complete_params(execute(plugin, "get_profiles"))
+        assert complete["success"] is True
+        text = complete["data"]
+        assert "Profile 1" in text
+        assert "power 100%" in text
+        assert "core +95 MHz" in text
+        assert "memory +200 MHz" in text
+        assert "memory +400 MHz" in text
+        assert "memory +600 MHz" in text
+        assert "fan 31% fixed" in text
+        assert "VF curve stored" in text
+        assert "01000200" not in text  # never dump the VF hex blob
+
+    def test_get_profiles_can_filter_to_one_slot(self) -> None:
+        fake, plugin, _ = make_plugin()
+        complete = complete_params(execute(plugin, "get_profiles", {"profile_id": 2}))
+        assert complete["success"] is True
+        text = complete["data"]
+        assert "Profile 2" in text
+        assert "memory +400 MHz" in text
+        assert "Profile 1" not in text
+        assert "Profile 3" not in text
+
+    def test_get_profiles_unknown_slot_is_typed_error(self) -> None:
+        fake, plugin, _ = make_plugin()
+        params = error_notification(execute(plugin, "get_profiles", {"profile_id": 5}))
+        assert params["code"] == protocol_code_for(ErrorCode.INVALID_VALUE)
+        assert "profile 5" in params["message"]
 
 
 class TestLoadProfileAndReset:
@@ -364,6 +405,42 @@ class TestConfirmationFlow:
         assert complete["keep_session"] is False
         assert "already applied" in complete["data"]
         assert fake.applied == []
+
+    def test_set_fan_auto_prompts_and_never_writes(self) -> None:
+        fake, plugin, _ = make_plugin()
+        complete = complete_params(execute(plugin, "set_fan_auto"))
+        assert complete["success"] is True
+        assert complete["keep_session"] is True
+        assert "automatic control" in complete["data"]
+        assert "Reply 'confirm'" in complete["data"]
+        assert fake.applied_fan_auto == []
+
+    def test_set_fan_auto_applies_after_confirmation(self) -> None:
+        fake, plugin, _ = make_plugin()
+        token = plugin.services.policy.issue_confirm_token("set_fan_auto", 0.0).token
+        complete = complete_params(
+            execute(plugin, "set_fan_auto", {"confirm_token": token})
+        )
+        assert complete["success"] is True
+        assert fake.applied_fan_auto == [0]
+        assert fake.tuning_by_gpu[0].fan_mode == "auto"
+
+    def test_set_fan_auto_is_noop_when_already_auto(self) -> None:
+        fake, plugin, _ = make_plugin(
+            tuning=TuningState(
+                gpu_index=0,
+                power_limit_pct=100.0,
+                core_offset_mhz=0.0,
+                memory_offset_mhz=0.0,
+                fan_mode="auto",
+                fan_percent=40.0,
+            )
+        )
+        complete = complete_params(execute(plugin, "set_fan_auto"))
+        assert complete["success"] is True
+        assert complete["keep_session"] is False
+        assert "already applied" in complete["data"]
+        assert fake.applied_fan_auto == []
 
     def test_clamped_prompt_names_the_value_that_would_apply(self) -> None:
         fake, plugin, clock = make_plugin()

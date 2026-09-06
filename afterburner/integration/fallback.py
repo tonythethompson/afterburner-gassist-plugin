@@ -106,3 +106,6 @@ class UnavailableAfterburner:
 
     def apply_fan_curve(self, gpu_index: int, curve: FanCurve) -> ControlResult:
         self._raise()
+
+    def apply_fan_auto(self, gpu_index: int) -> ControlResult:
+        self._raise()

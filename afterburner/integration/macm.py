@@ -485,6 +485,38 @@ def apply_control_to_region(
     return AppliedOutcome(action="applied", replaced=replaced, word_offsets=tuple(offsets))
 
 
+def apply_fan_auto_to_region(
+    region: bytearray,
+    gpu_index: int,
+) -> AppliedOutcome:
+    """Set the named fan-auto flag. No-op when automatic control is already on."""
+    parsed = validate_control_region(bytes(region))
+    spec = _CONTROL_SPECS[ControlFeature.FAN_PERCENT]
+    entry = _entry_view(region, parsed, gpu_index)
+    if not (entry.dwFlags & spec.flag):
+        raise PluginError(
+            ErrorCode.UNSUPPORTED_FEATURE,
+            "That control isn't available on this hardware/version.",
+            detail="MACM fan-speed flag not set; cannot switch fan auto",
+        )
+    if entry.dwFanFlagsCur & MACM_SHARED_MEMORY_GPU_ENTRY_FAN_FLAG_AUTO:
+        return AppliedOutcome(action="noop", replaced=None, word_offsets=())
+    replaced = _to_model_units(int(entry.dwFanSpeedCur), spec)
+    entry.dwFanFlagsCur |= MACM_SHARED_MEMORY_GPU_ENTRY_FAN_FLAG_AUTO
+    offsets = [
+        _entry_offset(parsed, gpu_index)
+        + _field_offset(MACM_SHARED_MEMORY_GPU_ENTRY, "dwFanFlagsCur"),
+        _field_offset(MACM_SHARED_MEMORY_HEADER, "dwCommand"),
+    ]
+    header = MACM_SHARED_MEMORY_HEADER.from_buffer(region)
+    header.dwCommand = MACM_SHARED_MEMORY_COMMAND_FLUSH
+    return AppliedOutcome(
+        action="applied",
+        replaced=replaced,
+        word_offsets=tuple(offsets),
+    )
+
+
 def reset_control_region(
     region: bytearray,
     gpu_index: int,
@@ -1025,6 +1057,44 @@ class AfterburnerControlClient:
             clamped=False,
             applied=True,
             replaced_value=replaced,
+            message=message,
+        )
+
+    def apply_fan_auto(self, gpu_index: int) -> ControlResult:
+        with _ControlMap() as view:
+            with view.mutex():
+                region = bytearray(view.read_bytes())
+                outcome = apply_fan_auto_to_region(region, gpu_index)
+                if outcome.action == "applied":
+                    self._raise_if_write_blocked_by_elevation()
+                    view.write_words(outcome.word_offsets, bytes(region))
+            if outcome.action == "noop":
+                return ControlResult(
+                    feature=ControlFeature.FAN_PERCENT,
+                    requested_value=None,
+                    applied_value=None,
+                    clamped=False,
+                    applied=False,
+                    replaced_value=None,
+                    message="Fan is already on automatic control, no change made.",
+                )
+            self._wait_for_completion(view)
+            with view.mutex():
+                state = tuning_state_from_region(view.read_bytes(), gpu_index)
+        if state.fan_mode != "auto":
+            message = (
+                "Fan auto was requested, but Afterburner still reports "
+                f"{state.fan_mode} fan control. Verify in MSI Afterburner."
+            )
+        else:
+            message = "Fan returned to automatic control and verified."
+        return ControlResult(
+            feature=ControlFeature.FAN_PERCENT,
+            requested_value=None,
+            applied_value=state.fan_percent,
+            clamped=False,
+            applied=True,
+            replaced_value=outcome.replaced,
             message=message,
         )
 

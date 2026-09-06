@@ -229,6 +229,31 @@ class TestApplyControl:
         assert entry.dwFanFlagsCur & macm.MACM_SHARED_MEMORY_GPU_ENTRY_FAN_FLAG_AUTO == 0
         assert _cmd(region) == macm.MACM_SHARED_MEMORY_COMMAND_FLUSH
 
+    def test_fan_auto_sets_named_flag(self) -> None:
+        region = _make_region(fan_cur=60, fan_flags_cur=0)
+        outcome = macm.apply_fan_auto_to_region(region, 0)
+        assert outcome.action == "applied"
+        entry = _entry(region)
+        assert entry.dwFanSpeedCur == 60
+        assert entry.dwFanFlagsCur & macm.MACM_SHARED_MEMORY_GPU_ENTRY_FAN_FLAG_AUTO
+        assert _cmd(region) == macm.MACM_SHARED_MEMORY_COMMAND_FLUSH
+
+    def test_fan_auto_is_noop_when_already_auto(self) -> None:
+        region = _make_region(fan_flags_cur=macm.MACM_SHARED_MEMORY_GPU_ENTRY_FAN_FLAG_AUTO)
+        outcome = macm.apply_fan_auto_to_region(region, 0)
+        assert outcome.action == "noop"
+        assert outcome.word_offsets == ()
+        assert _cmd(region) == 0
+        assert _entry(region).dwFanFlagsCur & macm.MACM_SHARED_MEMORY_GPU_ENTRY_FAN_FLAG_AUTO
+
+    def test_fan_auto_unsupported_without_fan_speed_flag(self) -> None:
+        region = _make_region(gpu_flags=macm.MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_CORE_CLOCK)
+        before = bytes(region)
+        with pytest.raises(PluginError) as excinfo:
+            macm.apply_fan_auto_to_region(region, 0)
+        assert excinfo.value.code is ErrorCode.UNSUPPORTED_FEATURE
+        assert bytes(region) == before
+
     def test_unsupported_feature_when_flag_not_advertised(self) -> None:
         region = _make_region(gpu_flags=macm.MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_FAN_SPEED)
         before = bytes(region)

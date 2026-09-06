@@ -651,6 +651,9 @@ class AfterburnerMonitoringClient:
     def apply_fan_curve(self, gpu_index: int, curve: FanCurve) -> ControlResult:
         raise self._control_unavailable("fan curves")
 
+    def apply_fan_auto(self, gpu_index: int) -> ControlResult:
+        raise self._control_unavailable("fan auto")
+
 
 def _file_version(exe: Path) -> Optional[str]:
     """FileVersion of an exe via the Win32 version resource; None when unavailable."""

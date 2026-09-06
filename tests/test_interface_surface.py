@@ -26,6 +26,7 @@ EXPECTED_SURFACE = frozenset(
         "reset_tuning",
         "apply_control",
         "apply_fan_curve",
+        "apply_fan_auto",
     }
 )
 

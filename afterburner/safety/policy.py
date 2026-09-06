@@ -26,6 +26,7 @@ HIGH_RISK_FUNCTIONS = frozenset(
         "set_memory_offset",
         "set_fan_percent",
         "set_fan_curve",
+        "set_fan_auto",
         "optimize_quiet",
         "optimize_thermal",
     }
@@ -35,6 +36,7 @@ LOW_RISK_FUNCTIONS = frozenset(
     {
         # Reads
         "get_gpu_status",
+        "list_gpus",
         "get_gpu_limits",
         "get_tuning_state",
         "get_profiles",

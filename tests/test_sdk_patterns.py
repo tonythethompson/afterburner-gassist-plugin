@@ -20,6 +20,7 @@ PROFILES = Path("tests/fixtures/profiles/startup_enabled")
 
 MANIFEST_FUNCTIONS = (
     "get_gpu_status",
+    "list_gpus",
     "get_gpu_limits",
     "get_tuning_state",
     "get_profiles",
@@ -31,6 +32,7 @@ MANIFEST_FUNCTIONS = (
     "set_core_offset",
     "set_memory_offset",
     "set_fan_percent",
+    "set_fan_auto",
     "set_fan_curve",
     "optimize_quiet",
     "optimize_thermal",

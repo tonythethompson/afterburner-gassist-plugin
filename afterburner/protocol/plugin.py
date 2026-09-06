@@ -347,6 +347,20 @@ class GAssistPlugin:
                 data={"gpu_index": gpu, "telemetry": t},
             )
 
+        def list_gpus(args: Dict[str, Any], gpu: int) -> ExecResult:
+            gpus = tuple(sorted(s.client.read_all_telemetry(), key=lambda t: t.gpu_index))
+            if not gpus:
+                return ExecResult(
+                    message="No GPUs reported by Afterburner.",
+                    data={"gpus": []},
+                )
+            labels = [f"{t.gpu_index} {t.gpu_name}" for t in gpus]
+            noun = "GPU" if len(gpus) == 1 else "GPUs"
+            return ExecResult(
+                message=f"{len(gpus)} {noun}: " + ", ".join(labels),
+                data={"gpus": gpus},
+            )
+
         def get_gpu_limits(args: Dict[str, Any], gpu: int) -> ExecResult:
             caps = s.resolver.resolve(gpu)
             lines: List[str] = []
@@ -382,7 +396,16 @@ class GAssistPlugin:
             return ExecResult(message=_state_message(state), data=state)
 
         def get_profiles(args: Dict[str, Any], gpu: int) -> ExecResult:
-            profiles = s.profiles.get_profiles(gpu)
+            profiles = list(s.profiles.get_profiles(gpu))
+            raw = args.get("profile_id", args.get("name"))
+            if raw is not None:
+                profile_id = _parse_profile_ref(raw)
+                profiles = [p for p in profiles if p.id == profile_id]
+                if not profiles:
+                    raise PluginError(
+                        ErrorCode.INVALID_VALUE,
+                        f"There's no Afterburner profile {profile_id}.",
+                    )
             if not profiles:
                 return ExecResult(
                     message="No Afterburner profiles are saved.",
@@ -391,11 +414,14 @@ class GAssistPlugin:
             labels = []
             active_id = None
             for profile in profiles:
-                active_id = profile.id if profile.is_active else active_id
-                labels.append(
-                    f"{profile.name}" + (" (active)" if profile.is_active else "")
-                )
-            message = "Profiles: " + ", ".join(labels)
+                if profile.is_active:
+                    active_id = profile.id
+                mark = " (active)" if profile.is_active else ""
+                if profile.summary:
+                    labels.append(f"{profile.name}{mark}: {profile.summary}")
+                else:
+                    labels.append(f"{profile.name}{mark}")
+            message = "Profiles: " + ". ".join(labels) + "."
             return ExecResult(
                 message=message,
                 data={"profiles": profiles, "active_profile_id": active_id},
@@ -471,6 +497,14 @@ class GAssistPlugin:
         def set_fan_curve(args: Dict[str, Any], gpu: int) -> ExecResult:
             return apply_fan_curve(self.services, gpu, args.get("points"))
 
+        def set_fan_auto(args: Dict[str, Any], gpu: int) -> ExecResult:
+            self._ensure_fan_percent(gpu)
+            result = s.client.apply_fan_auto(gpu)
+            return ExecResult(
+                message=result.message,
+                data={"feature": "fan_auto", "applied": result.applied},
+            )
+
         def optimize_quiet(args: Dict[str, Any], gpu: int) -> ExecResult:
             self._emit_stream("Looking for a quieter fan setting...")
             result = s.optimize.optimize_quiet(gpu)
@@ -487,6 +521,7 @@ class GAssistPlugin:
 
         registry: Dict[str, Executor] = {
             "get_gpu_status": get_gpu_status,
+            "list_gpus": list_gpus,
             "get_gpu_limits": get_gpu_limits,
             "get_tuning_state": get_tuning_state,
             "get_profiles": get_profiles,
@@ -499,6 +534,7 @@ class GAssistPlugin:
             "set_core_offset": set_value,
             "set_memory_offset": set_value,
             "set_fan_percent": set_value,
+            "set_fan_auto": set_fan_auto,
             "set_fan_curve": set_fan_curve,
             "optimize_quiet": optimize_quiet,
             "optimize_thermal": optimize_thermal,
@@ -794,6 +830,12 @@ class GAssistPlugin:
         self, function: str, args: Dict[str, Any], gpu: int
     ) -> Optional[float]:
         """Applied state already equals the (clamped) request? -> safe value (or None)."""
+        if function == "set_fan_auto":
+            self._ensure_fan_percent(gpu)
+            state = self.services.client.read_tuning_state(gpu)
+            if state.fan_mode == "auto":
+                return 0.0
+            return None
         if function not in _SINGLE_VALUE_FEATURE:
             return None
         feature, key = _SINGLE_VALUE_FEATURE[function]
@@ -818,6 +860,9 @@ class GAssistPlugin:
         if function == "set_fan_curve":
             self._validate_curve(args, gpu)
             return 0.0
+        if function == "set_fan_auto":
+            self._ensure_fan_percent(gpu)
+            return 0.0
         if function == "optimize_thermal":
             _require_number(args, "target_c", "target temperature")
         return 0.0
@@ -841,6 +886,14 @@ class GAssistPlugin:
             )
         self.services.validator.validate_fan_curve(gpu, FanCurve(points=points))
 
+    def _ensure_fan_percent(self, gpu: int) -> None:
+        caps = self.services.resolver.resolve(gpu)
+        if not caps.supports(ControlFeature.FAN_PERCENT):
+            raise PluginError(
+                ErrorCode.UNSUPPORTED_FEATURE,
+                "That control isn't available on this hardware/version.",
+            )
+
     def _clause(self, function: str, gpu: int, safe_value: float) -> str:
         feature = _SINGLE_VALUE_FEATURE.get(function)
         if feature is not None:
@@ -857,6 +910,11 @@ class GAssistPlugin:
         if function == "set_fan_curve":
             n = len(args.get("points") or [])
             return f"This will apply a {n}-point fan curve. Reply 'confirm' to apply."
+        if function == "set_fan_auto":
+            return (
+                "This will put the GPU fan back on Afterburner's automatic control. "
+                "Reply 'confirm' to apply."
+            )
         return f"This will run {function}. Reply 'confirm' to apply."
 
     def _run_executor(
@@ -984,7 +1042,7 @@ def _sdk_result(sdk_plugin: Any, core: "GAssistPlugin", messages: List[Dict[str,
 
 
 def bind_sdk_plugin(sdk_plugin: Any, core: "GAssistPlugin") -> None:
-    """Register the 16 manifest commands plus ``on_input`` on a gassist_sdk Plugin.
+    """Register the 18 manifest commands plus ``on_input`` on a gassist_sdk Plugin.
 
     Duck-typed so unit tests can bind a fake SDK object. ``on_input`` is a
     passthrough handler and is not listed in manifest.json.

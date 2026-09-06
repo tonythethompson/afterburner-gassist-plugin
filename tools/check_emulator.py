@@ -25,7 +25,7 @@ host, risky functions prompt (never write) and are cancelled via ``input``.
 The two write-applying low-risk functions (``load_profile``, ``reset_tuning``) are
 included by DEFAULT only in a degraded environment (Afterburner absent/unreachable,
 where every write path fails fast as a typed error before touching hardware) and
-skipped when Afterburner is live — so the gate keeps full 16-function coverage in CI
+skipped when Afterburner is live — so the gate keeps full 18-function coverage in CI
 while staying safe to run on a real machine. ``--allow-writes`` forces them everywhere.
 
 Usage:
@@ -172,8 +172,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     expected = {f["name"] for f in manifest["functions"]}
-    if len(expected) != 16:
-        print(f"check_emulator: expected 16 manifest functions, found {len(expected)}",
+    if len(expected) != 18:
+        print(f"check_emulator: expected 18 manifest functions, found {len(expected)}",
               file=sys.stderr)
         return 2
 

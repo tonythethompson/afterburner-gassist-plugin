@@ -276,6 +276,7 @@ class TestParsingAndTelemetry:
             lambda: client.reset_tuning(0),
             lambda: client.apply_control(0, None, 1.0),  # type: ignore[arg-type]
             lambda: client.apply_fan_curve(0, None),  # type: ignore[arg-type]
+            lambda: client.apply_fan_auto(0),
         ):
             with pytest.raises(PluginError) as excinfo:
                 op()

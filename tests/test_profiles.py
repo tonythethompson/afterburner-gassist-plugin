@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from afterburner.integration.fake import FakeAfterburner, default_capabilities
-from afterburner.models import (
+from afterburner.services.profiles import describe_stored_settings
     ControlFeature,
     ErrorCode,
     GpuLimits,
@@ -44,6 +44,35 @@ class TestListProfiles:
         assert [p.id for p in profiles] == [1, 2, 3]
         assert [p.name for p in profiles] == ["Profile 1", "Profile 2", "Profile 3"]
         assert [p.is_active for p in profiles] == [True, False, False]
+        assert "power 100%" in profiles[0].summary
+        assert "core +95 MHz" in profiles[0].summary
+        assert "memory +200 MHz" in profiles[0].summary
+        assert "fan 31% fixed" in profiles[0].summary
+        assert "VF curve stored" in profiles[0].summary
+        assert "memory +400 MHz" in profiles[1].summary
+        assert "memory +600 MHz" in profiles[2].summary
+
+
+class TestDescribeStoredSettings:
+    def test_includes_thermal_limit_and_skips_empty_vf(self) -> None:
+        text = describe_stored_settings(
+            {
+                "PowerLimit": "80",
+                "ThermalLimit": "75",
+                "CoreClkBoost": "-350000",
+                "CoreVoltageBoost": "0",
+            }
+        )
+        assert text == (
+            "power 80%, core -350 MHz, voltage boost 0, thermal limit 75 C"
+        )
+        assert "VF curve" not in text
+
+    def test_reports_vf_curve_without_dumping_hex(self) -> None:
+        text = describe_stored_settings({"VFCurve": "010002007F000000deadbeef"})
+        assert text == "VF curve stored"
+        assert "deadbeef" not in text
+        assert "01000200" not in text
 
     def test_other_slot_can_be_active(self, tmp_path) -> None:
         fake = default_fake(tuning=slot_tuning(memory_offset_mhz=600.0))  # slot 3

@@ -1020,9 +1020,10 @@ acting.
 | Function | Risk | NL-friendly description (for mapping) |
 |---|---|---|
 | `get_gpu_status` | low | "Report current GPU status: temperature, clocks, utilization, power, fan speed, memory usage." |
+| `list_gpus` | low | "List GPUs reported by Afterburner, with index and name for each adapter." |
 | `get_gpu_limits` | low | "Show the supported tuning ranges (min/max power, clock offsets, fan) reported by Afterburner." |
 | `get_tuning_state` | low | "Show the GPU's current tuning: power limit, core/memory offsets, voltage, fan mode." |
-| `get_profiles` | low | "List Afterburner profiles and indicate which one is active." |
+| `get_profiles` | low | "List Afterburner profiles by number with stored power, clock offsets, fan, voltage boost, thermal limit, and whether a VF curve is saved." |
 | `show_configuration` | low | "Summarize the detected Afterburner setup, interface status, and available controls." |
 | `get_tuning_ownership` | low | "Explain who owns the GPU's tuning state: what Afterburner is currently applying (and whether a profile or startup auto-apply is active), noting that NVIDIA App / G-Assist tuning cannot be seen through Afterburner." |
 | `load_profile` | low | "Load an existing Afterburner profile by name or number." |
@@ -1031,6 +1032,7 @@ acting.
 | `set_core_offset` | high | "Adjust the GPU core clock offset in MHz, within supported limits." |
 | `set_memory_offset` | high | "Adjust the GPU memory clock offset in MHz, within supported limits." |
 | `set_fan_percent` | high | "Set a fixed GPU fan speed percentage." |
+| `set_fan_auto` | high | "Return the GPU fan to Afterburner's automatic control." |
 | `set_fan_curve` | high | "Set a custom fan curve as temperature/fan-percent points." |
 | `optimize_quiet` | high | "Make the GPU quieter by lowering fan noise while keeping temps safe." (maps to fan/thermal intent) |
 | `optimize_thermal` | high | "Keep the GPU below a target temperature (e.g. 70C) by adjusting fan/thermal behavior." |
@@ -1087,7 +1089,7 @@ END
 ```
 
 - **Risky** (require confirmation): `set_power_limit`, `set_core_offset`, `set_memory_offset`,
-  `set_fan_percent`, `set_fan_curve`, `optimize_*`.
+  `set_fan_percent`, `set_fan_auto`, `set_fan_curve`, `optimize_*`.
 - **Low-friction** (no confirmation): all reads, `reset_tuning`, `load_profile`.
 - Confirmation prompts for tuning writes carry **ownership context**: they name the Afterburner
   value the change replaces **as read when the request is processed** (decision time) and warn

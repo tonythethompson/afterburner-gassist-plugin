@@ -31,7 +31,7 @@ def _registered() -> set:
 class TestManifestSurface:
     def test_every_registered_function_is_declared(self) -> None:
         assert BY_NAME.keys() == _registered()
-        assert len(FUNCTIONS) == 16
+        assert len(FUNCTIONS) == 18
 
     def test_top_level_shape_matches_protocol_v2(self) -> None:
         assert MANIFEST["manifestVersion"] == 1

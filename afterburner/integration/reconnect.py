@@ -138,3 +138,6 @@ class ReconnectingAfterburner:
 
     def apply_fan_curve(self, gpu_index: int, curve: FanCurve) -> ControlResult:
         return self._route("apply_fan_curve", gpu_index, curve)
+
+    def apply_fan_auto(self, gpu_index: int) -> ControlResult:
+        return self._route("apply_fan_auto", gpu_index)

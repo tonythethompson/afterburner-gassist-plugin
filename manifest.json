@@ -25,6 +25,17 @@
       "required": []
     },
     {
+      "name": "list_gpus",
+      "description": "List GPUs reported by MSI Afterburner, with index and name for each adapter.",
+      "tags": [
+        "gpu",
+        "monitoring",
+        "status"
+      ],
+      "properties": {},
+      "required": []
+    },
+    {
       "name": "get_gpu_limits",
       "description": "Show the supported tuning ranges (min/max power limit, core/memory clock offsets, fan speed) reported by Afterburner for this GPU.",
       "tags": [
@@ -60,7 +71,7 @@
     },
     {
       "name": "get_profiles",
-      "description": "List Afterburner profiles and indicate which one is active.",
+      "description": "List Afterburner profiles by number with each slot's stored power, clock offsets, fan, voltage boost, thermal limit, and whether a VF curve is saved. Optionally filter to one profile.",
       "tags": [
         "gpu",
         "profiles",
@@ -70,6 +81,10 @@
         "gpu_index": {
           "type": "integer",
           "description": "Which GPU (default 0)."
+        },
+        "profile_id": {
+          "type": "integer",
+          "description": "Optional profile number (1-5) to show only that slot."
         }
       },
       "required": []
@@ -232,6 +247,23 @@
       "required": [
         "percent"
       ]
+    },
+    {
+      "name": "set_fan_auto",
+      "description": "Return the GPU fan to Afterburner's automatic control. Requires confirmation.",
+      "tags": [
+        "gpu",
+        "control",
+        "fan",
+        "cooling"
+      ],
+      "properties": {
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        }
+      },
+      "required": []
     },
     {
       "name": "set_fan_curve",

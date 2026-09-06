@@ -35,13 +35,14 @@ class TestRiskClassification:
     def test_high_risk_functions(self) -> None:
         policy, _ = make_policy()
         for fn in ("set_power_limit", "set_core_offset", "set_memory_offset",
-                   "set_fan_percent", "set_fan_curve", "optimize_quiet", "optimize_thermal"):
+                   "set_fan_percent", "set_fan_curve", "set_fan_auto",
+                   "optimize_quiet", "optimize_thermal"):
             assert policy.risk_for(fn) is RiskLevel.HIGH
             assert policy.requires_confirmation(fn)
 
     def test_low_risk_functions(self) -> None:
         policy, _ = make_policy()
-        for fn in ("get_gpu_status", "get_tuning_state", "get_profiles",
+        for fn in ("get_gpu_status", "list_gpus", "get_tuning_state", "get_profiles",
                    "load_profile", "reset_tuning", "diagnose_performance"):
             assert policy.risk_for(fn) is RiskLevel.LOW
             assert not policy.requires_confirmation(fn)
@@ -52,7 +53,7 @@ class TestRiskClassification:
 
     def test_risk_sets_are_complete_and_disjoint(self) -> None:
         assert not (HIGH_RISK_FUNCTIONS & LOW_RISK_FUNCTIONS)
-        assert len(HIGH_RISK_FUNCTIONS) == 7
+        assert len(HIGH_RISK_FUNCTIONS) == 8
         assert len(LOW_RISK_FUNCTIONS) >= 7
 
 

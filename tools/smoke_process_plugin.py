@@ -225,7 +225,7 @@ def run(python: str, plugin: Path, timeout: float) -> int:
         check(
             result.get("protocol_version") == "2.0"
             and result.get("name") == "afterburner"
-            and len(commands) == 16,
+            and len(commands) == 18,
             "initialize",
             f"status={status}, name={result.get('name')}, commands={len(commands)}",
         )

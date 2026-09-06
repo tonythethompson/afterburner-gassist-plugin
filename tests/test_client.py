@@ -73,6 +73,12 @@ class TestDelegation:
         assert result.applied is True
         assert len(self.fake.applied_fan_curves) == 1
 
+    def test_apply_fan_auto_delegates(self) -> None:
+        self.fake.set_tuning(TuningState(gpu_index=0, fan_mode="manual", fan_percent=40.0))
+        result = self.client.apply_fan_auto(0)
+        assert result.applied is True
+        assert self.fake.applied_fan_auto == [0]
+
     def test_plugin_errors_pass_through(self) -> None:
         self.fake.status = InterfaceStatus.NOT_RUNNING
         with pytest.raises(PluginError) as excinfo:

@@ -73,3 +73,7 @@ class AfterburnerInterface(Protocol):
 
     def apply_fan_curve(self, gpu_index: int, curve: FanCurve) -> ControlResult:
         ...
+
+    def apply_fan_auto(self, gpu_index: int) -> ControlResult:
+        """Return the GPU fan to Afterburner's automatic control (named FAN_FLAG_AUTO)."""
+        ...

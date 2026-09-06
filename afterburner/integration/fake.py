@@ -14,7 +14,7 @@ Simulates unavailability modes:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..models import (
@@ -92,6 +92,7 @@ class FakeAfterburner:
     telemetry_calls: Dict[int, int] = field(default_factory=dict)
     applied: List[Tuple[int, ControlFeature, float]] = field(default_factory=list)
     applied_fan_curves: List[Tuple[int, FanCurve]] = field(default_factory=list)
+    applied_fan_auto: List[int] = field(default_factory=list)
     profile_loads: List[int] = field(default_factory=list)
     resets: List[int] = field(default_factory=list)
 
@@ -268,6 +269,37 @@ class FakeAfterburner:
             applied_value=None,
             applied=True,
             message=f"Fan curve with {len(curve.points)} points applied.",
+        )
+
+    def apply_fan_auto(self, gpu_index: int) -> ControlResult:
+        self._ensure_ok()
+        err = self.apply_errors.get(gpu_index, None)
+        if err is not None:
+            raise err
+        caps = self.caps_by_gpu.get(gpu_index)
+        if caps is not None and not caps.supports(ControlFeature.FAN_PERCENT):
+            raise PluginError(
+                ErrorCode.UNSUPPORTED_FEATURE,
+                "That control isn't available on this hardware/version.",
+            )
+        state = self.tuning_by_gpu.get(gpu_index)
+        if state is not None and state.fan_mode == "auto":
+            return ControlResult(
+                feature=ControlFeature.FAN_PERCENT,
+                requested_value=None,
+                applied_value=state.fan_percent,
+                applied=False,
+                message="Fan is already on automatic control, no change made.",
+            )
+        self.applied_fan_auto.append(gpu_index)
+        if state is not None:
+            self.tuning_by_gpu[gpu_index] = replace(state, fan_mode="auto")
+        return ControlResult(
+            feature=ControlFeature.FAN_PERCENT,
+            requested_value=None,
+            applied_value=None if state is None else state.fan_percent,
+            applied=True,
+            message="Fan returned to automatic control.",
         )
 
 
