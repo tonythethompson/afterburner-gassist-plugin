@@ -189,16 +189,19 @@ class TestProperty10TuningOwnershipHonesty:
         plugin = plugin_over(tuning=tuning)
         messages = plugin.process(
             "execute",
-            {"function": "set_power_limit", "params": {"percent": requested}},
+            {"function": "set_power_limit",
+             "arguments": {"percent": requested}},
             1,
         )
         assert len(messages) == 1
         params = messages[0]["params"]
-        data = params["data"]
-        if data.get("applied") is False and "needs_confirmation" not in data:
+        # Protocol V2: the complete data IS the text (no structured fields on the wire).
+        assert isinstance(params["data"], str)
+        if "already applied" in params["data"]:
             # Req 19.4 no-op: applied state already equals the request.
-            assert "already applied" in params["message"]
+            assert params["keep_session"] is False
         else:
-            # (c) risky confirmations carry the ownership clause.
-            assert data["needs_confirmation"] is True
-            assert "can't be seen through Afterburner" in data["message"]
+            # (c) risky confirmations prompt in text, hold the session open, and carry
+            # the ownership clause.
+            assert params["keep_session"] is True
+            assert "can't be seen through Afterburner" in params["data"]

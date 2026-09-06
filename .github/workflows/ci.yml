@@ -46,3 +46,43 @@ jobs:
         # install/header is present (committed fixtures stand). Exit 1 on layout drift,
         # exit 2 if the installed header no longer parses under the supported subset.
         run: python tools/generate_sdk_layout_fixtures.py --diff
+
+  wire-contract:
+    # NVIDIA's official plugin_emulator mirrors the engine's Protocol V2 side and is the
+    # closest automated proxy for the real RISE engine: it reproduced the exact reader
+    # failure the live engine reported as "Could not parse JSON-RPC message" when
+    # complete.data was a dict (2026-09-06). This job builds dist/afterburner and runs it
+    # through the emulator, failing on reader parse errors, execute timeouts, or a broken
+    # initialize/passthrough lifecycle. Runners never have Afterburner installed, so
+    # functions degrade to typed errors (valid terminal frames) and --allow-writes is
+    # safe — it also covers load_profile/reset_tuning dispatch.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out NVIDIA/G-Assist (pinned reference: SDK source + plugin_emulator)
+        uses: actions/checkout@v4
+        with:
+          repository: NVIDIA/G-Assist
+          # The commit the wire-contract contract was verified against locally.
+          ref: d69a4e5d360d4ca156eccfa6c02774e8804fc931
+          path: nvidia-gassist
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install development dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Wire-contract gate (official plugin_emulator vs dist/afterburner)
+        run: >-
+          python tools/check_emulator.py
+          --emulator nvidia-gassist/plugins/plugin_emulator
+          --sdk nvidia-gassist/plugins/sdk/python
+          --out dist/afterburner
+          --allow-writes

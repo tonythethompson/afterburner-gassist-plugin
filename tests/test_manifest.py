@@ -1,10 +1,12 @@
 """manifest.json parity checks (plan task 21).
 
 The static manifest must stay in lock-step with the plugin's runtime registry and risk
-policy: every function the plugin registers is declared with NL-friendly properties, and the
-high-risk (`set_*` / `optimize_*`) entries carry the `confirm_token` property and say the
-operation requires confirmation. Control functions are declared (G-Assist registers the
-static manifest) but execution is capability-gated at runtime.
+policy: every function the plugin registers is declared with NL-friendly properties.
+High-risk (`set_*` / `optimize_*`) entries say the operation requires confirmation but do
+NOT advertise a `confirm_token` input — Protocol V2 has no token channel (the engine
+relays the user's plain-text verdict as `input`; tokens are internal to the plugin).
+Control functions are declared (G-Assist registers the static manifest) but execution is
+capability-gated at runtime.
 """
 from __future__ import annotations
 
@@ -78,14 +80,16 @@ class TestManifestSurface:
 
 
 class TestManifestRiskGating:
-    def test_high_risk_functions_carry_confirm_token_and_wording(self) -> None:
+    def test_high_risk_functions_say_confirmation_is_required(self) -> None:
         assert set(BY_NAME) & HIGH_RISK_FUNCTIONS == HIGH_RISK_FUNCTIONS
         for name in HIGH_RISK_FUNCTIONS:
             fn = BY_NAME[name]
-            assert "confirm_token" in fn["properties"], name
+            # Protocol V2: no token channel exists, so the schema must not ask for one.
+            assert "confirm_token" not in fn["properties"], name
             assert "Requires confirmation" in fn["description"], name
 
-    def test_low_risk_functions_have_no_confirm_token(self) -> None:
+    def test_low_risk_functions_do_not_require_confirmation(self) -> None:
         for name, fn in BY_NAME.items():
             if name not in HIGH_RISK_FUNCTIONS:
                 assert "confirm_token" not in fn["properties"], name
+                assert "Requires confirmation" not in fn["description"], name

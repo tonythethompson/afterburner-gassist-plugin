@@ -601,6 +601,82 @@ the installed `SDK\Include\*.h` headers.
     + `README.md` + `LICENSE`). Parent rows 2–6, 8, and 12 were re-marked `[x]` — their
     subtasks were complete; the parent markers had been missed by earlier marking passes.
     Every task row (1–24) is now `[x]`. No questions arose.
+  - **Live-conversation follow-up (plugin installed in the real `nvtopps\rise\plugins\` dir):**
+    asked G-Assist *"What's my GPU temperature and fan speed right now?"* in NVIDIA App. Engine
+    logs + artifacts confirm: (a) **the plugin WAS discovered** — `rise\assistants\G-Assist\
+    function_embeddings.bin`, rebuilt at session time (06:16:54), indexes all 16 afterburner
+    functions (verified by ASCII scan) alongside the reference plugins'; but (b) **the reply came
+    from the engine's native system-info capability, not the plugin** — the session's
+    `core_system_info_embeddings.bin` holds the live system snapshot that grounded the answer
+    (`gpu: thermal: temperature_c=47.0`, `fan_speed_rpm=0.0`, matching the 47°C / 0.0 RPM
+    reply verbatim), and no RISE python process was ever spawned. This is correct platform
+    behavior, not a bug: generic GPU telemetry is a core G-Assist capability answered natively;
+    the plugin is selected for Afterburner-specific intents (tuning state, power limit, profiles,
+    fan curve, ownership, diagnostics, writes) that native system info cannot answer. To observe
+    the plugin    invoked live, ask an Afterburner-specific question (e.g. power limit / profile /
+    ownership), with the NVIDIA App host elevated for any write.
+  - **Live engine-contract conformance fix:** the Afterburner-specific question
+    (*"What power limit does MSI Afterburner have applied right now?"*) DID launch the
+    plugin (whole package imported under the RISE python at session time, pycache
+    evidence) but the engine answered *"Could not parse JSON-RPC message from afterburner
+    plugin. Ensure plugin uses Protocol V2."* Root cause: our wire MESSAGE SHAPES
+    diverged from the real Protocol V2 contract (framing was byte-identical — 4-byte BE
+    length + JSON-RPC 2.0). Diffing against NVIDIA's migration guide and the
+    `gassist_sdk` vendored in the reference plugins (`rise\plugins\modio\libs\gassist_sdk`)
+    fixed `afterburner/protocol/plugin.py` toward the engine-verified envelope: `complete`
+    notifications carry `{request_id, success, data, keep_session}`; failures are `error`
+    notifications `{request_id, code, message}`
+    (code via `errors.protocol_code_for`); `ping` echoes the engine's `timestamp`;
+    `execute` arguments arrive under `arguments`; `input` is acknowledged
+    (`{"acknowledged": true}`) before resolving the confirmation verdict; `shutdown` is a
+    notification answered with NO frame; the `initialize` result carries
+    name/version/protocol_version/commands (manifest-backed). Entry `plugin.py` now logs
+    lifecycle + crashes to `rise\plugins\afterburner\afterburner.log` (never the wire
+    channel; falls back to %TEMP% when the plugin dir is unwritable — a startup log crash
+    reads as a protocol failure to the engine). Tests re-targeted to the SDK-exact shapes;
+    real-process harness (`tools/smoke_process_plugin.py`) drives
+    initialize→ping→execute→input(ack+cancel)→diagnose→shutdown-notification and PASSES
+    live under the RISE python. (First pass left `data` as an OBJECT `{message, ...}` —
+    see the final finding below for why that still failed and the real contract.)
+  - **Live conversation after conformance fix:** the engine now launches the plugin,
+    parses its frames, and renders our typed errors verbatim ("❌ Plugin error: MSI
+    Afterburner isn't running"). That exposed the second bug: the engine keeps ONE plugin
+    process per session (`persistent: true`), and the interface was chosen ONCE at spawn
+    — if Afterburner wasn't exposing MAHM at that instant, every later call (even after
+    the user started Afterburner) stayed "isn't running" forever. Fix: new
+    `ReconnectingAfterburner` (`afterburner/integration/reconnect.py`) wraps a client
+    *factory*; while unavailable it reports the concrete typed status and probes at most
+    every 2 s (design cadence), then swaps in a fresh live MAHM/MACM client transparently
+    on the first call at least 2 s after Afterburner appears. 5 unit tests prove
+    delegate-when-OK / typed-errors-while-down / cooldown gating / swap-on-recovery;
+    recovery proven live against the real RTX 5070. Entry-point logging also records the
+    "detected again" swap in `afterburner.log`. Full suite 361 passed.
+  - **FINAL root cause of the persistent "Could not parse JSON-RPC message" (2026-09-06,
+    string-data contract):** after the reconnect fix, the installed build served a real
+    session cleanly — the wire transcript (`afterburner.log`, 07:44:28) shows initialize
+    → execute(get_tuning_state) → a well-formed `complete` carrying live tuning data — yet
+    the engine STILL reported the parse error, while error notifications (strings)
+    rendered fine at 07:15. The user pointed us at NVIDIA's public plugin repo
+    (github.com/NVIDIA/G-Assist); diffing against its canonical sources settled it:
+    **Protocol V2 has no structured output channel — `complete.params.data` is the NL
+    text STRING** (PROTOCOL_V2.md + PLUGIN_MIGRATION_GUIDE_V2.md + the SDK + every
+    reference plugin agree; the official `plugin_emulator` — the engine-side ground
+    truth — crashes on dict data with "can only concatenate str (not \"dict\") to str",
+    precisely the failure the real engine reported). Our `complete` sent
+    `data: {message, ...structured fields...}`, so the engine's handler threw the moment
+    it touched our frame. Fix: `_complete()` now sends `data` = the message text; the
+    confirmation token (Req 9.1 single-use + TTL) is issued and consumed INSIDE the
+    plugin and never travels on the wire — risky prompts are a `complete`
+    (`keep_session: true`) whose text asks for confirmation, and the user verdict arrives
+    as `input` (acknowledged, then resolved against the internal pending state; apply /
+    cancel / 60 s timeout). Structured executor results remain internal (domain layer),
+    and manifest `confirm_token`-style round-trips are gone from the wire. Verified:
+    full suite 361 passed re-targeted to string data + input-based confirmation; the
+    official plugin_emulator runs the rebuilt dist with ZERO parse errors (live reads,
+    risky prompt with keep_session, input confirm routed — apply correctly gated by the
+    elevation mismatch, an expected typed error); the real-process harness PASSES under
+    the RISE python against `dist/afterburner`. Pending: elevated reinstall into
+    `rise\plugins\afterburner` + one real App retry.
 
 ## Notes
 

@@ -1,3 +1,6 @@
 # Development / test dependencies (Task 1). Runtime deps are stdlib-only (see requirements.txt).
 pytest>=8
 hypothesis>=6
+# The wire-contract gate runs NVIDIA's official plugin_emulator, which imports colorama
+# (tools/check_emulator.py).
+colorama>=0.4.6

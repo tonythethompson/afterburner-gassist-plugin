@@ -1041,8 +1041,13 @@ optimization — they do **not** trigger unrelated granular tuning changes.
 
 ### Confirmation Flow (for high-risk operations)
 
-Two supported mechanisms; the plugin prefers a **confirm-token** pattern and can fall back to
-passthrough `input`.
+Resolved through Protocol V2 **passthrough `input`**: a risky `execute` returns a success
+`complete` with `keep_session: true` whose `data` text asks for confirmation; the engine
+relays the user's plain-text verdict back as an `input` message, which the plugin
+acknowledges (2 s) and resolves. Single-use + TTL confirmation tokens are issued and consumed
+**inside** the plugin (Req 9.1) and never travel on the wire — Protocol V2's output channel
+is text-only (verified 2026-09-06: a dict `complete.data` makes both the real RISE engine
+and NVIDIA's official `plugin_emulator` treat the frame as unparseable).
 
 ```pascal
 ALGORITHM executeRisky(function, args, context)
@@ -1053,32 +1058,31 @@ BEGIN
   // applied state read live from the control map; equality avoids prompting and writing
   // (Requirement 19.4). Profile applies (load_profile / reset_tuning) handle their own
   // equality over the whole profile.
-  IF NOT context.confirmed AND readAppliedState(function) equals safe_value within tolerance THEN
-     RETURN complete(success=true, data={applied:false, message:"already applied — no change made"})
+  IF readAppliedState(function) equals safe_value within tolerance THEN
+     RETURN complete(success=true, data="already applied — no change made")   // Req 19.4
   END IF
 
-  IF SafetyPolicy.risk(function) = HIGH AND NOT context.confirmed THEN
-     token ← SafetyPolicy.issueConfirmToken(function, safe_value)   // TTL = CONFIRM_TOKEN_TTL_SECONDS (300s), single-use
-     plugin.set_keep_session(true)
-     RETURN complete(success=true, data={
-        needs_confirmation: true,
-        confirm_token: token,
-        message: "This will set " + function + " to " + safe_value +
-                 (clamped ? " (clamped to supported range)" : "") +
-                 ". Reply 'confirm' to apply."
-     })
+  IF SafetyPolicy.risk(function) = HIGH AND NOT confirmed THEN
+     token ← SafetyPolicy.issueConfirmToken(function, safe_value)   // internal: single-use, TTL 300 s
+     pendingInput[function] ← {args, expires_at: now + 60 s, token}   // Requirement 1.11
+     prompt ← "This will set " + function + " to " + safe_value +
+              (clamped ? " (clamped to supported range)" : "") +
+              ". Reply 'confirm' to apply. " + ownershipClause(...)
+     RETURN complete(success=true, data=prompt, keep_session=true)   // data IS the NL text
   END IF
 
-  // Confirmed path: token validated & consumed, or context.confirmed passthrough ack
-  IF NOT SafetyPolicy.validateToken(context.token) THEN
-     RAISE PluginError(CONFIRMATION_REQUIRED, "Please confirm the change first.")
+  // Confirmed path: the user's follow-up arrived as `input`; an affirmative verdict
+  // consumes the internal token and resolves the pending entry. (A manifest-era
+  // `confirm_token` argument on a re-invoked execute is still validated & consumed.)
+  IF input.verdict(content) is NOT affirmative THEN
+     RETURN complete(success=true, data="Change cancelled — nothing was applied.")
   END IF
 
-  // Write time: the adapter re-checks equality under the mutex (no-op ⇒ applied=false but
-  // still success — Requirement 19.4) and verifies by post-FLUSH read-back before returning
-  // (MACM Control Write Sequence); an apply failure surfaces as a typed PluginError.
+  // Write time: the adapter re-checks equality under the mutex (no-op ⇒ still success —
+  // Requirement 19.4) and verifies by post-FLUSH read-back before returning (MACM Control
+  // Write Sequence); an apply failure surfaces as a typed PluginError.
   result ← afterburnerClient.apply(...safe_value...)
-  RETURN complete(success=true, data=result)   // data.applied reports whether a write occurred
+  RETURN complete(success=true, data=result.message)
 END
 ```
 
@@ -1098,13 +1102,15 @@ END
   time means success with no FLUSH; otherwise the confirmed value is applied and the result
   reports the value actually replaced (which may differ from the value named in the prompt).
 - A **pending confirmation is a success `complete`**, not an error; `CONFIRMATION_REQUIRED` is
-  reserved for presenting an absent, expired, or replayed token.
-- Two supported confirmation mechanisms, each with its own timeout: (1) *token re-invocation*
-  (preferred) — the follow-up LLM call re-runs the same function carrying `confirm_token`;
-  tokens expire after `CONFIRM_TOKEN_TTL_SECONDS` = 300 s. (2) *passthrough `input`* (fallback)
-  — via a registered `on_input` command after `set_keep_session(true)`; the follow-up `input`
-  must be acknowledged within **2 s** (Protocol V2) and an unconfirmed passthrough request is
-  cancelled after 60 s (Requirement 1.11).
+  reserved for presenting an absent, expired, or replayed confirmation.
+- Confirmation runs over Protocol V2 *passthrough `input`*: the risky `complete` carries
+  `keep_session: true` and its text asks the user to reply "confirm"/"cancel". The follow-up
+  `input` must be acknowledged within **2 s** (Protocol V2) and is matched by first-word verdict
+  against the plugin's internal pending entry for that function; an unconfirmed entry
+  auto-cancels after **60 s** (Requirement 1.11). Each pending entry is backed by a single-use
+  token (TTL `CONFIRM_TOKEN_TTL_SECONDS` = 300 s) consumed on resolution, so a replay can never
+  apply twice. A token carried on a re-invoked `execute` (manifest-era callers) is still
+  validated and consumed, but no Protocol V2 message ever carries one.
 
 ### Caching & Staleness Strategy
 
@@ -1150,8 +1156,7 @@ CONFIRM_TOKEN_TTL_SECONDS = 300.0  # high-risk confirmation tokens (single-use)
       "tags": ["gpu", "control", "power", "overclock"],
       "properties": {
         "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." },
-        "percent": { "type": "number", "description": "Target power limit percentage." },
-        "confirm_token": { "type": "string", "description": "Confirmation token from the prior step." }
+        "percent": { "type": "number", "description": "Target power limit percentage." }
       },
       "required": ["percent"]
     },
@@ -1202,7 +1207,8 @@ the `gassist_sdk` is copied into the plugin's `libs/` folder (engine auto-adds i
 
 Out-of-range *finite* values are **clamped and applied** as a success result (see row above),
 never reported as an error; non-finite/non-numeric values are `INVALID_VALUE` errors, and a
-pending user confirmation is a success `complete` with `needs_confirmation` (not an error).
+pending user confirmation is a success `complete` whose `data` text asks for confirmation
+(not an error).
 All genuine errors are returned to G-Assist via the `error`/`complete` notifications — the
 plugin never crashes on these conditions.
 

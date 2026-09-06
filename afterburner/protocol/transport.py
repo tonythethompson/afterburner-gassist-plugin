@@ -75,10 +75,14 @@ class GAssistProtocol:
         self,
         reader: Optional[io.BufferedIOBase] = None,
         writer: Optional[io.BufferedIOBase] = None,
+        trace: Optional[Callable[[str, Any], None]] = None,
     ) -> None:
+        """``trace(side, payload)`` receives every inbound request / outbound message
+        (plus "recv_error" entries) — the live wire transcript for engine debugging."""
         self.reader = reader if reader is not None else sys.stdin.buffer
         self.writer = writer if writer is not None else sys.stdout.buffer
         self.handler: Optional[RequestHandler] = None
+        self.trace = trace
         self.requests_seen = 0
         self.errors_handled = 0
 
@@ -167,6 +171,8 @@ class GAssistProtocol:
                 return 0
             except ProtocolError as exc:
                 self.errors_handled += 1
+                if self.trace is not None:
+                    self.trace("recv_error", {"code": exc.code, "message": exc.message})
                 self.write_message(error(None, exc.code, exc.message))
                 continue
             except OSError:
@@ -175,6 +181,8 @@ class GAssistProtocol:
             self.requests_seen += 1
             method = request["method"]
             params = request["params"]
+            if self.trace is not None:
+                self.trace("recv", request)
             try:
                 messages, stop = self.handler(method, params, request_id)
             except Exception as exc:  # pragma: no cover - handler must never blow the loop
@@ -182,6 +190,8 @@ class GAssistProtocol:
                 messages = [error(request_id, -1, f"handler error: {exc}")]
                 stop = False
             for message in messages:
+                if self.trace is not None:
+                    self.trace("send", message)
                 self.write_message(message)
             if stop:
                 return 0

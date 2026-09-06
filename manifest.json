@@ -10,162 +10,308 @@
     {
       "name": "get_gpu_status",
       "description": "Report current GPU status: temperature, clocks, utilization, power, fan speed and memory usage from MSI Afterburner.",
-      "tags": ["gpu", "monitoring", "status", "temperature"],
+      "tags": [
+        "gpu",
+        "monitoring",
+        "status",
+        "temperature"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        }
       },
       "required": []
     },
     {
       "name": "get_gpu_limits",
       "description": "Show the supported tuning ranges (min/max power limit, core/memory clock offsets, fan speed) reported by Afterburner for this GPU.",
-      "tags": ["gpu", "monitoring", "limits", "ranges"],
+      "tags": [
+        "gpu",
+        "monitoring",
+        "limits",
+        "ranges"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        }
       },
       "required": []
     },
     {
       "name": "get_tuning_state",
       "description": "Show the GPU's current tuning applied by Afterburner: power limit, core/memory clock offsets, voltage, and fan mode.",
-      "tags": ["gpu", "monitoring", "tuning", "state"],
+      "tags": [
+        "gpu",
+        "monitoring",
+        "tuning",
+        "state"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        }
       },
       "required": []
     },
     {
       "name": "get_profiles",
       "description": "List Afterburner profiles and indicate which one is active.",
-      "tags": ["gpu", "profiles", "monitoring"],
+      "tags": [
+        "gpu",
+        "profiles",
+        "monitoring"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        }
       },
       "required": []
     },
     {
       "name": "show_configuration",
       "description": "Summarize the detected Afterburner setup: interface status, version, profile count, and which controls are available on this hardware.",
-      "tags": ["gpu", "configuration", "status"],
+      "tags": [
+        "gpu",
+        "configuration",
+        "status"
+      ],
       "properties": {},
       "required": []
     },
     {
       "name": "get_tuning_ownership",
       "description": "Explain who owns the GPU's tuning state: what Afterburner is currently applying (and whether a profile or startup auto-apply is active), noting that NVIDIA App / G-Assist tuning cannot be seen through Afterburner.",
-      "tags": ["gpu", "tuning", "ownership", "authority"],
+      "tags": [
+        "gpu",
+        "tuning",
+        "ownership",
+        "authority"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        }
       },
       "required": []
     },
     {
       "name": "load_profile",
       "description": "Load an existing Afterburner profile by name or number, applying its stored settings through validated controls.",
-      "tags": ["gpu", "profiles", "control"],
+      "tags": [
+        "gpu",
+        "profiles",
+        "control"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." },
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        },
         "profile_id": {
           "type": "integer",
           "description": "Profile number (1-5) or profile name to load."
         }
       },
-      "required": ["profile_id"]
+      "required": [
+        "profile_id"
+      ]
     },
     {
       "name": "reset_tuning",
       "description": "Reset GPU tuning back to default / stock settings reported by Afterburner.",
-      "tags": ["gpu", "control", "reset", "defaults"],
+      "tags": [
+        "gpu",
+        "control",
+        "reset",
+        "defaults"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        }
       },
       "required": []
     },
     {
       "name": "set_power_limit",
       "description": "Set the GPU power limit as a percentage, clamped to the Afterburner-reported supported range. Requires confirmation.",
-      "tags": ["gpu", "control", "power", "overclock"],
+      "tags": [
+        "gpu",
+        "control",
+        "power",
+        "overclock"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." },
-        "percent": { "type": "number", "description": "Target power limit percentage (within the reported min/max)." },
-        "confirm_token": { "type": "string", "description": "Confirmation token from the prior step." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        },
+        "percent": {
+          "type": "number",
+          "description": "Target power limit percentage (within the reported min/max)."
+        }
       },
-      "required": ["percent"]
+      "required": [
+        "percent"
+      ]
     },
     {
       "name": "set_core_offset",
       "description": "Adjust the GPU core clock offset in MHz, clamped to the Afterburner-reported supported range. Requires confirmation.",
-      "tags": ["gpu", "control", "core", "overclock"],
+      "tags": [
+        "gpu",
+        "control",
+        "core",
+        "overclock"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." },
-        "offset_mhz": { "type": "number", "description": "Core clock offset in MHz (within the reported min/max)." },
-        "confirm_token": { "type": "string", "description": "Confirmation token from the prior step." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        },
+        "offset_mhz": {
+          "type": "number",
+          "description": "Core clock offset in MHz (within the reported min/max)."
+        }
       },
-      "required": ["offset_mhz"]
+      "required": [
+        "offset_mhz"
+      ]
     },
     {
       "name": "set_memory_offset",
       "description": "Adjust the GPU memory clock offset in MHz, clamped to the Afterburner-reported supported range. Requires confirmation.",
-      "tags": ["gpu", "control", "memory", "overclock"],
+      "tags": [
+        "gpu",
+        "control",
+        "memory",
+        "overclock"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." },
-        "offset_mhz": { "type": "number", "description": "Memory clock offset in MHz (within the reported min/max)." },
-        "confirm_token": { "type": "string", "description": "Confirmation token from the prior step." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        },
+        "offset_mhz": {
+          "type": "number",
+          "description": "Memory clock offset in MHz (within the reported min/max)."
+        }
       },
-      "required": ["offset_mhz"]
+      "required": [
+        "offset_mhz"
+      ]
     },
     {
       "name": "set_fan_percent",
       "description": "Set a fixed GPU fan speed percentage, clamped to the Afterburner-reported supported range. Requires confirmation.",
-      "tags": ["gpu", "control", "fan", "cooling"],
+      "tags": [
+        "gpu",
+        "control",
+        "fan",
+        "cooling"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." },
-        "percent": { "type": "number", "description": "Target fan speed percentage (0-100)." },
-        "confirm_token": { "type": "string", "description": "Confirmation token from the prior step." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        },
+        "percent": {
+          "type": "number",
+          "description": "Target fan speed percentage (0-100)."
+        }
       },
-      "required": ["percent"]
+      "required": [
+        "percent"
+      ]
     },
     {
       "name": "set_fan_curve",
       "description": "Set a custom fan curve as temperature/fan-percent points. Available only where Afterburner reports fan-curve support; otherwise returns a clear error. Requires confirmation.",
-      "tags": ["gpu", "control", "fan", "curve"],
+      "tags": [
+        "gpu",
+        "control",
+        "fan",
+        "curve"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." },
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        },
         "points": {
           "type": "array",
           "description": "Fan curve points, each { temp_c: number, fan_percent: number }, in ascending temperature order."
-        },
-        "confirm_token": { "type": "string", "description": "Confirmation token from the prior step." }
+        }
       },
-      "required": ["points"]
+      "required": [
+        "points"
+      ]
     },
     {
       "name": "optimize_quiet",
       "description": "Make the GPU quieter by lowering the fan setpoint while keeping temperatures safe. Requires confirmation.",
-      "tags": ["gpu", "control", "fan", "quiet", "noise"],
+      "tags": [
+        "gpu",
+        "control",
+        "fan",
+        "quiet",
+        "noise"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." },
-        "confirm_token": { "type": "string", "description": "Confirmation token from the prior step." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        }
       },
       "required": []
     },
     {
       "name": "optimize_thermal",
       "description": "Keep the GPU below a target temperature (for example 70 C) by adjusting fan behavior. Requires confirmation.",
-      "tags": ["gpu", "control", "fan", "thermal", "temperature"],
+      "tags": [
+        "gpu",
+        "control",
+        "fan",
+        "thermal",
+        "temperature"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." },
-        "target_c": { "type": "number", "description": "Target GPU temperature in Celsius (40-95)." },
-        "confirm_token": { "type": "string", "description": "Confirmation token from the prior step." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        },
+        "target_c": {
+          "type": "number",
+          "description": "Target GPU temperature in Celsius (40-95)."
+        }
       },
-      "required": ["target_c"]
+      "required": [
+        "target_c"
+      ]
     },
     {
       "name": "diagnose_performance",
       "description": "Explain what is limiting GPU performance or why the clock is dropping, using live telemetry and evidence.",
-      "tags": ["gpu", "diagnostics", "troubleshooting", "performance"],
+      "tags": [
+        "gpu",
+        "diagnostics",
+        "troubleshooting",
+        "performance"
+      ],
       "properties": {
-        "gpu_index": { "type": "integer", "description": "Which GPU (default 0)." }
+        "gpu_index": {
+          "type": "integer",
+          "description": "Which GPU (default 0)."
+        }
       },
       "required": []
     }

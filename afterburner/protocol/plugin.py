@@ -5,15 +5,25 @@ services and formats NL-friendly responses through the error mapper. Domain valu
 reach the adapter unvalidated (validation lives in the domain services / validator); this
 layer only parses function arguments, decides confirmation, and formats results.
 
-Wire conventions (stdlib fallback, libs/README.txt): engine requests arrive via the
-``GAssistProtocol`` loop; this plugin answers JSON-RPC responses for
-initialize/ping/shutdown and emits ``complete`` notifications for every ``execute``. A
-``complete`` notification params shape is ``{"success": bool, "message": str,
-"data": {...}}``. Risky ``execute`` outcomes are a success ``complete`` whose data carries
-``needs_confirmation: true`` + ``confirm_token`` (never an error — design confirmation
-flow); genuine failures are ``complete`` with ``success: false`` (typed error code + user
-message). Unknown functions get a JSON-RPC method-not-found response and running state is
-retained (Req 1.7).
+Wire conventions — the engine-verified Protocol V2 contract (NVIDIA migration guide +
+the ``gassist_sdk`` vendored in the reference plugins; found divergent live when the real
+RISE engine reported "Could not parse JSON-RPC message"): engine requests arrive via the
+``GAssistProtocol`` loop; this plugin answers JSON-RPC *responses* for initialize and ping
+(echoing the ping ``timestamp``), sends **no** response to the shutdown *notification*, and
+acknowledges ``input`` with ``{"acknowledged": true}`` before acting. Every ``execute``
+finishes with a ``complete`` notification whose params are ``{"request_id": id,
+"success": true, "data": <str>, "keep_session": bool}`` where ``data`` is the NL
+user-facing text itself (the Protocol V2 output channel is text-only — NVIDIA's
+PROTOCOL_V2.md, migration guide, the ``gassist_sdk``, and the official plugin_emulator
+all agree; structured dict payloads made the live engine report "Could not parse
+JSON-RPC message", found 2026-09-06). Failures are an ``error`` notification
+``{"request_id", "code", "message"}`` (code via ``protocol_code_for``), unknown
+functions a JSON-RPC method-not-found response (running state retained, Req 1.7).
+Risky ``execute`` outcomes are a success ``complete`` with ``keep_session: true`` whose
+text asks for confirmation (never an error — design confirmation flow). The confirmation
+token is issued and consumed **inside** the plugin (single-use + TTL, never on the
+wire); the follow-up user verdict arrives as an ``input`` message and is resolved here
+against the internal per-function pending state.
 """
 
 from __future__ import annotations
@@ -26,7 +36,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from ..errors import clamp_result_message, user_message_for
+from ..errors import clamp_result_message, protocol_code_for, user_message_for
 from ..integration.client import AfterburnerClient
 from ..integration.profiles import ProfileFileReader
 from ..models import (
@@ -277,10 +287,23 @@ class GAssistPlugin:
         *,
         tolerance: float = 1.0,
         clock: Optional[Callable[[], float]] = None,
+        name: str = "afterburner",
+        version: str = "1.0.0",
+        description: str = "Monitor and control MSI Afterburner via natural language.",
+        functions_meta: Optional[Sequence[Dict[str, str]]] = None,
     ) -> None:
+        """Wire-layer metadata mirrors manifest.json (the entry point passes it in)."""
         self.services = services
         self.tolerance = tolerance
         self._clock = clock or _time.monotonic
+        self.name = name
+        self.version = version
+        self.description = description
+        self._functions_meta: Dict[str, str] = {
+            str(meta.get("name")): str(meta.get("description", ""))
+            for meta in (functions_meta or [])
+            if isinstance(meta, dict) and meta.get("name")
+        }
         self.initialized = False
         self.shutdown_requested = False
         self.keep_session = False
@@ -290,6 +313,13 @@ class GAssistPlugin:
         self._pending_input: Dict[str, Dict[str, Any]] = {}
         self._registry: Dict[str, Executor] = self._build_registry()
         self._startup_ms: Optional[float] = None
+
+    def commands(self) -> List[Dict[str, str]]:
+        """[{"name", "description"}] for the initialize result (engine protocol V2)."""
+        return [
+            {"name": name, "description": self._functions_meta.get(name, name)}
+            for name in self.registered_functions()
+        ]
 
     # ------------------------------------------------------------------ registry
     def _build_registry(self) -> Dict[str, Executor]:
@@ -465,18 +495,24 @@ class GAssistPlugin:
         self._startup_ms = elapsed_ms
         self.initialized = True
         return {
+            "name": self.name,
+            "version": self.version,
+            "description": self.description,
+            "protocol_version": "2.0",
+            "commands": self.commands(),
             "status": self._startup_status,
             "message": self._startup_detail or "ready",
             "startup_ms": round(elapsed_ms, 1),
-            "functions": list(self.registered_functions()),
         }
 
     def ping(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        return {"result": "pong"}
+        # Protocol V2 health check: echo the engine's timestamp (a "pong" result shape is
+        # what made the live engine report our earlier frames as invalid).
+        return {"timestamp": params.get("timestamp")}
 
     def shutdown(self, params: Dict[str, Any]) -> Dict[str, Any]:
         self.shutdown_requested = True
-        return {"status": "shutting_down"}
+        return {}
 
     # ------------------------------------------------------------------ startup
     def _run_startup_sequence(self) -> None:
@@ -519,12 +555,15 @@ class GAssistPlugin:
             if method == "ping":
                 return [transport.response(request_id, self.ping(params))]
             if method == "shutdown":
-                result = self.shutdown(params)
-                return [transport.response(request_id, result)]
+                # Protocol V2: shutdown is a notification - no response is sent.
+                self.shutdown(params)
+                return []
             if method == "execute":
                 return self._execute(params, request_id)
             if method == "input":
-                return self._handle_input(params, request_id)
+                # Protocol V2: acknowledge within the 2 s budget, then act.
+                ack = [transport.response(request_id, {"acknowledged": True})]
+                return ack + self._handle_input(params, request_id)
             return [
                 transport.error(
                     request_id,
@@ -579,13 +618,15 @@ class GAssistPlugin:
 
     @staticmethod
     def _extract_args(params: Dict[str, Any]) -> Tuple[Dict[str, Any], Any]:
-        nested = params.get("params", {})
+        # Protocol V2 execute carries arguments under "arguments" (the engine's shape).
+        nested = params.get("arguments") or params.get("params", {})
         if not isinstance(nested, dict):
             nested = {}
         extras = {
             k: v
             for k, v in params.items()
-            if k not in ("function", "name", "params", "confirm_token")
+            if k not in ("function", "name", "params", "arguments", "context",
+                         "system_info", "confirm_token")
         }
         args = {**extras, **nested}
         token = params.get("confirm_token", args.pop("confirm_token", None))
@@ -621,28 +662,25 @@ class GAssistPlugin:
                 self._complete(
                     request_id,
                     message="already applied — no change made",
-                    data={"applied": False, "function": function},
                 )
             ]
 
         safe_value = self._safe_prompt_value(function, args, gpu)
+        # Single-use + TTL token, kept server-side (Req 9.1). The wire never carries it:
+        # the engine relays the user's plain-text verdict back as an ``input`` message.
         confirm = self.services.policy.issue_confirm_token(function, safe_value)
         self.keep_session = True
         self._pending_input[function] = {
             "args": {k: v for k, v in args.items() if k != "__function"},
             "expires_at": self._clock() + PASSTHROUGH_TIMEOUT_SECONDS,
             "gpu": gpu,
+            "token": confirm.token,
         }
         clause = self._clause(function, gpu, safe_value)
         message = self._prompt_message(function, args, safe_value) + " " + clause
-        data = {
-            "needs_confirmation": True,
-            "confirm_token": confirm.token,
-            "function": function,
-            "keep_session": True,
-            "message": message,
-        }
-        return [self._complete(request_id, message=message, data=data)]
+        return [
+            self._complete(request_id, message=message, keep_session=True)
+        ]
 
     # ------------------------------------------------------------------ input
     def _handle_input(
@@ -657,7 +695,6 @@ class GAssistPlugin:
                     self._complete(
                         request_id,
                         message="No change is currently awaiting confirmation.",
-                        data={"needs_confirmation": False},
                     )
                 ]
         pending = self._pending_input.get(function)
@@ -666,16 +703,16 @@ class GAssistPlugin:
                 self._complete(
                     request_id,
                     message=f"No {function!r} change is awaiting confirmation.",
-                    data={"needs_confirmation": False},
                 )
             ]
         if self._clock() > pending["expires_at"]:
+            # Terminal: consume the internal token so the policy registry doesn't grow.
             self._pending_input.pop(function, None)
+            self._consume_token(pending)
             return [
                 self._complete(
                     request_id,
                     message="Confirmation timed out — no change was made.",
-                    data={"timed_out": True, "function": function},
                 )
             ]
 
@@ -683,26 +720,48 @@ class GAssistPlugin:
         verdict = self._verdict(content)
         if verdict == "affirmative":
             self._pending_input.pop(function, None)
+            # Single-use gate (Req 9.1): validate consumes the token; a replay can never
+            # apply twice because the pending entry is already gone.
+            if self._consume_token(pending) is None:
+                return [
+                    self._complete(
+                        request_id,
+                        message=(
+                            "That confirmation is no longer valid — please request "
+                            "the change again."
+                        ),
+                    )
+                ]
             executor = self._registry[function]
             args = dict(pending["args"])
             args.setdefault("__function", function)
             return [self._run_executor(executor, args, request_id)]
         if verdict == "negative":
             self._pending_input.pop(function, None)
+            self._consume_token(pending)
             return [
                 self._complete(
                     request_id,
                     message="Change cancelled — nothing was applied.",
-                    data={"cancelled": True, "function": function},
                 )
             ]
         return [
             self._complete(
                 request_id,
                 message="Please reply 'confirm' to apply the change or 'cancel' to stop.",
-                data={"needs_confirmation": True, "function": function},
+                keep_session=True,
             )
         ]
+
+    def _consume_token(self, pending: Dict[str, Any]) -> Any:
+        """Consume the internal single-use token; returns the entry or None (invalid)."""
+        token = pending.get("token")
+        if not token:
+            return None
+        try:
+            return self.services.policy.validate_token(str(token))
+        except PluginError:
+            return None
 
     # ------------------------------------------------------------------ helpers
     def _gpu_of_args(self, args: Dict[str, Any]) -> int:
@@ -794,24 +853,38 @@ class GAssistPlugin:
                     detail=f"{type(exc).__name__}: {exc}",
                 ),
             )
-        return self._complete(request_id, message=result.message, data=result.data)
+        return self._complete(request_id, message=result.message)
 
     # ------------------------------------------------------------------ wire
     @staticmethod
     def _complete(
-        request_id: Any, *, message: str, data: Dict[str, Any], success: bool = True
+        request_id: Any,
+        *,
+        message: str,
+        keep_session: bool = False,
     ) -> Dict[str, Any]:
-        params = {"success": success, "message": message, "data": jsonable(data)}
+        """Engine contract: complete notification whose ``data`` is the NL text itself.
+
+        Protocol V2 has no structured output channel (verified against NVIDIA's
+        PROTOCOL_V2.md / migration guide / SDK / emulator + the live engine, which
+        rejects dict payloads as unparseable)."""
+        params = {
+            "request_id": request_id,
+            "success": True,
+            "data": message,
+            "keep_session": keep_session,
+        }
         return transport.notification("complete", params)
 
     @staticmethod
     def _complete_error(request_id: Any, exc: PluginError) -> Dict[str, Any]:
+        """Engine contract: error notification (code via errors.protocol_code_for)."""
         params = {
-            "success": False,
+            "request_id": request_id,
+            "code": protocol_code_for(exc.code),
             "message": exc.user_message,
-            "data": jsonable({"error_code": exc.code.value, "detail": exc.detail}),
         }
-        return transport.notification("complete", params)
+        return transport.notification("error", params)
 
     @staticmethod
     def _verdict(content: Any) -> str:
@@ -841,9 +914,14 @@ def run_plugin_loop(
     plugin: GAssistPlugin,
     reader=None,
     writer=None,
+    trace=None,
 ) -> int:
-    """Run the protocol message loop over the plugin (injectable streams for tests)."""
-    protocol = transport.GAssistProtocol(reader=reader, writer=writer)
+    """Run the protocol message loop over the plugin (injectable streams for tests).
+
+    ``trace(side, payload)`` is called for every inbound request and outbound message
+    (engine debugging; the entry point logs the transcript to afterburner.log).
+    """
+    protocol = transport.GAssistProtocol(reader=reader, writer=writer, trace=trace)
 
     def handler(method, params, request_id):
         messages = plugin.process(method, params, request_id)
