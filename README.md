@@ -225,8 +225,9 @@ Ask *"What's controlling my GPU overclock right now?"* to see the ownership repo
   github.com/NVIDIA/G-Assist): `python tools/check_emulator.py` builds `dist/afterburner`, runs it
   through the official emulator (the engine-side Protocol V2 ground truth), executes every
   function, resolves risky prompts via `input`, and fails on reader parse errors or timeouts.
-  Pass `--allow-writes` to also execute `load_profile`/`reset_tuning` (safe only where Afterburner
-  is absent, e.g. CI).
+  The write-applying functions (`load_profile`/`reset_tuning`) run automatically when Afterburner
+  is unreachable (every degraded CI run) and are skipped on a live host, where they would write;
+  `--allow-writes` forces them everywhere.
 - CI (`.github/workflows/ci.yml`) runs the full test suite, `build.py --check`, the `--diff`
   drift gate, and the plugin_emulator wire-contract gate on every push to `main` and every
   pull request.

@@ -20,9 +20,13 @@ conforming plugin must never emit:
 
 Environment tolerance: CI runners have no Afterburner, so functions degrade to typed
 "not available" errors — those are valid terminal frames, not wire failures. On a live
-host, risky functions prompt (never write) and are cancelled via ``input``; the two
-write-applying low-risk functions (``load_profile``, ``reset_tuning``) are EXCLUDED
-unless ``--allow-writes`` so the gate is safe to run on a real Afterburner machine.
+host, risky functions prompt (never write) and are cancelled via ``input``.
+
+The two write-applying low-risk functions (``load_profile``, ``reset_tuning``) are
+included by DEFAULT only in a degraded environment (Afterburner absent/unreachable,
+where every write path fails fast as a typed error before touching hardware) and
+skipped when Afterburner is live — so the gate keeps full 16-function coverage in CI
+while staying safe to run on a real machine. ``--allow-writes`` forces them everywhere.
 
 Usage:
     python tools/check_emulator.py \
@@ -97,6 +101,26 @@ class _Capture(logging.Handler):
         self.records.append(record)
 
 
+def classify_environment(text: str) -> str:
+    """Classify the probe outcome: "live", "degraded", or "unknown".
+
+    ``show_configuration`` completes in both worlds: the message starts
+    "MSI Afterburner: ok ..." when the control interface is reachable, and names the
+    failure otherwise. Unknown -> callers fail safe (skip write-applying functions).
+    """
+    low = text.lower()
+    if "msi afterburner: ok" in low or "owns the tuning state" in low:
+        return "live"
+    degraded = (
+        "not available", "isn't running", "doesn't appear", "not_running",
+        "not_installed", "not installed", "unavailable", "no write controls",
+        "read-only", "not reachable",
+    )
+    if any(token in low for token in degraded):
+        return "degraded"
+    return "unknown"
+
+
 def _find_emulator(arg: str | None) -> Path | None:
     if arg:
         path = Path(arg)
@@ -115,8 +139,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=str(ROOT / "dist" / "afterburner"),
                         help="build output dir (assembled by build.py)")
     parser.add_argument("--allow-writes", action="store_true",
-                        help="also execute load_profile / reset_tuning (safe in CI: no "
-                             "Afterburner on runners; may write on a live host)")
+                        help="force load_profile / reset_tuning even when Afterburner is "
+                             "reachable (may write on a live host)")
     parser.add_argument("--skip-build", action="store_true",
                         help="use the existing --out tree instead of rebuilding")
     parser.add_argument("--timeout", type=float, default=10.0,
@@ -193,10 +217,27 @@ def main(argv: list[str] | None = None) -> int:
             print(f"initialize: PASS (plugins: "
                   f"{', '.join(p.name for p in engine.list_plugins())})")
 
+        # Probe whether Afterburner is reachable. Write-applying functions are only safe
+        # (can't touch hardware) when it isn't, so the gate runs them in degraded
+        # environments and skips them on a live host.
+        probe = engine.execute("show_configuration", {"gpu_index": 0})
+        environment = classify_environment(probe.response or probe.error or "")
+        if args.allow_writes:
+            print(f"environment: {environment} (--allow-writes: load_profile/"
+                  f"reset_tuning forced)")
+        elif environment == "degraded":
+            print(f"environment: degraded (no reachable Afterburner) — write-applying "
+                  f"functions included (they fail fast without touching hardware)")
+        else:
+            print(f"environment: {environment} — write-applying functions skipped "
+                  f"(load_profile/reset_tuning would write; --allow-writes to force)")
+
         for name in sorted(expected):
-            if name in WRITE_APPLYING and not args.allow_writes:
+            if name in WRITE_APPLYING and not (
+                args.allow_writes or environment == "degraded"
+            ):
                 skipped_writes.append(name)
-                print(f"  {name}: SKIP (write-applying low-risk; --allow-writes to cover)")
+                print(f"  {name}: SKIP (write-applying; environment is {environment})")
                 continue
             arguments = FUNCTION_ARGS.get(name, {"gpu_index": 0})
             try:
@@ -246,7 +287,8 @@ def main(argv: list[str] | None = None) -> int:
             failures.append(f"engine reader: {line}")
 
         if skipped_writes:
-            print(f"note: skipped write-applying functions: {', '.join(skipped_writes)}")
+            print(f"note: skipped write-applying functions (live host): "
+                  f"{', '.join(skipped_writes)}")
     finally:
         if engine is not None:
             try:
@@ -262,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {f}")
         return 1
     print(f"WIRE-CONTRACT: PASS ({calls} functions executed, "
-          f"{len(expected) - calls} write-skips, zero reader parse failures)")
+          f"{len(expected) - calls} live-host write-skips, zero reader parse failures)")
     return 0
 
 

@@ -53,9 +53,10 @@ jobs:
     # failure the live engine reported as "Could not parse JSON-RPC message" when
     # complete.data was a dict (2026-09-06). This job builds dist/afterburner and runs it
     # through the emulator, failing on reader parse errors, execute timeouts, or a broken
-    # initialize/passthrough lifecycle. Runners never have Afterburner installed, so
-    # functions degrade to typed errors (valid terminal frames) and --allow-writes is
-    # safe — it also covers load_profile/reset_tuning dispatch.
+    # initialize/passthrough lifecycle. Runners never have Afterburner installed, so the
+    # environment probe classifies this run as degraded and the check auto-includes the
+    # write-applying functions (load_profile/reset_tuning dispatch), which fail fast as
+    # typed errors without touching hardware; --allow-writes is kept for explicitness.
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
