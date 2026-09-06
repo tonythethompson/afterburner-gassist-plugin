@@ -1,0 +1,6 @@
+# Runtime dependencies: standard library only.
+#
+# - Windows named-shared-memory access (MAHM / MACM) uses ctypes against kernel32 -- stdlib
+#   only; mmap cannot attach to another process's named section.
+# - The G-Assist Plugin Protocol V2 transport is provided by the vendored `gassist_sdk`
+#   (see `libs/README.txt`); it is not installed from PyPI.

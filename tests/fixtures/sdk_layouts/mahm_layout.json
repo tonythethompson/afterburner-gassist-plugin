@@ -1,0 +1,290 @@
+{
+  "constants": {
+    "MAHM_SHARED_MEMORY_ENTRY_FLAG_SHOW_IN_LCD": "0x00000002",
+    "MAHM_SHARED_MEMORY_ENTRY_FLAG_SHOW_IN_OSD": "0x00000001",
+    "MAHM_SHARED_MEMORY_ENTRY_FLAG_SHOW_IN_TRAY": "0x00000004",
+    "MONITORING_SOURCE_ID_AUX2_VOLTAGE": "0x00000043",
+    "MONITORING_SOURCE_ID_AUX_VOLTAGE": "0x00000041",
+    "MONITORING_SOURCE_ID_BUS_USAGE": "0x00000034",
+    "MONITORING_SOURCE_ID_CORE_CLOCK": "0x00000020",
+    "MONITORING_SOURCE_ID_CPU_CLOCK": "0x000000a0",
+    "MONITORING_SOURCE_ID_CPU_POWER": "0x00000100",
+    "MONITORING_SOURCE_ID_CPU_TEMPERATURE": "0x00000080",
+    "MONITORING_SOURCE_ID_CPU_USAGE": "0x00000090",
+    "MONITORING_SOURCE_ID_FAN_SPEED": "0x00000010",
+    "MONITORING_SOURCE_ID_FAN_SPEED2": "0x00000012",
+    "MONITORING_SOURCE_ID_FAN_SPEED3": "0x00000014",
+    "MONITORING_SOURCE_ID_FAN_TACHOMETER": "0x00000011",
+    "MONITORING_SOURCE_ID_FAN_TACHOMETER2": "0x00000013",
+    "MONITORING_SOURCE_ID_FAN_TACHOMETER3": "0x00000015",
+    "MONITORING_SOURCE_ID_FB_USAGE": "0x00000032",
+    "MONITORING_SOURCE_ID_FRAMERATE": "0x00000050",
+    "MONITORING_SOURCE_ID_FRAMERATE_0DOT1_PERCENT_LOW": "0x00000056",
+    "MONITORING_SOURCE_ID_FRAMERATE_1DOT0_PERCENT_LOW": "0x00000055",
+    "MONITORING_SOURCE_ID_FRAMERATE_AVG": "0x00000053",
+    "MONITORING_SOURCE_ID_FRAMERATE_MAX": "0x00000054",
+    "MONITORING_SOURCE_ID_FRAMERATE_MIN": "0x00000052",
+    "MONITORING_SOURCE_ID_FRAMETIME": "0x00000051",
+    "MONITORING_SOURCE_ID_GPU_ABS_POWER": "0x00000061",
+    "MONITORING_SOURCE_ID_GPU_POWER_LIMIT": "0x00000071",
+    "MONITORING_SOURCE_ID_GPU_REL_POWER": "0x00000060",
+    "MONITORING_SOURCE_ID_GPU_SLI_SYNC_LIMIT": "0x00000075",
+    "MONITORING_SOURCE_ID_GPU_TEMPERATURE": "0x00000000",
+    "MONITORING_SOURCE_ID_GPU_TEMPERATURE2": "0x000000b0",
+    "MONITORING_SOURCE_ID_GPU_TEMPERATURE3": "0x000000c0",
+    "MONITORING_SOURCE_ID_GPU_TEMPERATURE4": "0x000000d0",
+    "MONITORING_SOURCE_ID_GPU_TEMPERATURE5": "0x000000e0",
+    "MONITORING_SOURCE_ID_GPU_TEMP_LIMIT": "0x00000070",
+    "MONITORING_SOURCE_ID_GPU_USAGE": "0x00000030",
+    "MONITORING_SOURCE_ID_GPU_UTIL_LIMIT": "0x00000074",
+    "MONITORING_SOURCE_ID_GPU_VOLTAGE": "0x00000040",
+    "MONITORING_SOURCE_ID_GPU_VOLTAGE_LIMIT": "0x00000072",
+    "MONITORING_SOURCE_ID_MEMORY_CLOCK": "0x00000022",
+    "MONITORING_SOURCE_ID_MEMORY_USAGE": "0x00000031",
+    "MONITORING_SOURCE_ID_MEMORY_USAGE_PROCESS": "0x00000035",
+    "MONITORING_SOURCE_ID_MEMORY_VOLTAGE": "0x00000042",
+    "MONITORING_SOURCE_ID_MEM_TEMPERATURE": "0x00000002",
+    "MONITORING_SOURCE_ID_MEM_TEMPERATURE2": "0x000000b2",
+    "MONITORING_SOURCE_ID_MEM_TEMPERATURE3": "0x000000c2",
+    "MONITORING_SOURCE_ID_MEM_TEMPERATURE4": "0x000000d2",
+    "MONITORING_SOURCE_ID_MEM_TEMPERATURE5": "0x000000e2",
+    "MONITORING_SOURCE_ID_PAGEFILE_USAGE": "0x00000092",
+    "MONITORING_SOURCE_ID_PCB_TEMPERATURE": "0x00000001",
+    "MONITORING_SOURCE_ID_PCB_TEMPERATURE2": "0x000000b1",
+    "MONITORING_SOURCE_ID_PCB_TEMPERATURE3": "0x000000c1",
+    "MONITORING_SOURCE_ID_PCB_TEMPERATURE4": "0x000000d1",
+    "MONITORING_SOURCE_ID_PCB_TEMPERATURE5": "0x000000e1",
+    "MONITORING_SOURCE_ID_PLUGIN_CPU": "0x000000f1",
+    "MONITORING_SOURCE_ID_PLUGIN_GPU": "0x000000f0",
+    "MONITORING_SOURCE_ID_PLUGIN_HDD": "0x000000f4",
+    "MONITORING_SOURCE_ID_PLUGIN_MISC": "0x000000ff",
+    "MONITORING_SOURCE_ID_PLUGIN_MOBO": "0x000000f2",
+    "MONITORING_SOURCE_ID_PLUGIN_NET": "0x000000f5",
+    "MONITORING_SOURCE_ID_PLUGIN_PSU": "0x000000f6",
+    "MONITORING_SOURCE_ID_PLUGIN_RAM": "0x000000f3",
+    "MONITORING_SOURCE_ID_PLUGIN_UPS": "0x000000f7",
+    "MONITORING_SOURCE_ID_RAM_USAGE": "0x00000091",
+    "MONITORING_SOURCE_ID_RAM_USAGE_PROCESS": "0x00000093",
+    "MONITORING_SOURCE_ID_SHADER_CLOCK": "0x00000021",
+    "MONITORING_SOURCE_ID_UNKNOWN": "0xffffffff",
+    "MONITORING_SOURCE_ID_VID_USAGE": "0x00000033",
+    "MONITORING_SOURCE_ID_VRM_TEMPERATURE": "0x00000003",
+    "MONITORING_SOURCE_ID_VRM_TEMPERATURE2": "0x000000b3",
+    "MONITORING_SOURCE_ID_VRM_TEMPERATURE3": "0x000000c3",
+    "MONITORING_SOURCE_ID_VRM_TEMPERATURE4": "0x000000d3",
+    "MONITORING_SOURCE_ID_VRM_TEMPERATURE5": "0x000000e3"
+  },
+  "from": {
+    "afterburner_version": "4.6.7.17439",
+    "header_sha256": "f21a44868870a2312e2cd0d35d4c95fa25c378cec6899583cafc475f345ecfd1"
+  },
+  "header": "MAHMSharedMemory.h",
+  "schema": "sdk-layout/1",
+  "signature": "MAHM",
+  "structs": {
+    "MAHM_SHARED_MEMORY_ENTRY": {
+      "alignment": 4,
+      "fields": [
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szSrcName",
+          "offset": 0,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szSrcUnits",
+          "offset": 260,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szLocalizedSrcName",
+          "offset": 520,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szLocalizedSrcUnits",
+          "offset": 780,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szRecommendedFormat",
+          "offset": 1040,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "kind": "scalar",
+          "name": "data",
+          "offset": 1300,
+          "size": 4,
+          "type": "float"
+        },
+        {
+          "kind": "scalar",
+          "name": "minLimit",
+          "offset": 1304,
+          "size": 4,
+          "type": "float"
+        },
+        {
+          "kind": "scalar",
+          "name": "maxLimit",
+          "offset": 1308,
+          "size": 4,
+          "type": "float"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFlags",
+          "offset": 1312,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwGpu",
+          "offset": 1316,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwSrcId",
+          "offset": 1320,
+          "size": 4,
+          "type": "DWORD"
+        }
+      ],
+      "size": 1324
+    },
+    "MAHM_SHARED_MEMORY_GPU_ENTRY": {
+      "alignment": 4,
+      "fields": [
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szGpuId",
+          "offset": 0,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szFamily",
+          "offset": 260,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szDevice",
+          "offset": 520,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szDriver",
+          "offset": 780,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szBIOS",
+          "offset": 1040,
+          "size": 260,
+          "type": "char"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemAmount",
+          "offset": 1300,
+          "size": 4,
+          "type": "DWORD"
+        }
+      ],
+      "size": 1304
+    },
+    "MAHM_SHARED_MEMORY_HEADER": {
+      "alignment": 4,
+      "fields": [
+        {
+          "kind": "scalar",
+          "name": "dwSignature",
+          "offset": 0,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwVersion",
+          "offset": 4,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwHeaderSize",
+          "offset": 8,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwNumEntries",
+          "offset": 12,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwEntrySize",
+          "offset": 16,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "time",
+          "offset": 20,
+          "size": 4,
+          "type": "time_t"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwNumGpuEntries",
+          "offset": 24,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwGpuEntrySize",
+          "offset": 28,
+          "size": 4,
+          "type": "DWORD"
+        }
+      ],
+      "size": 32
+    }
+  },
+  "version": "0x00020000"
+}

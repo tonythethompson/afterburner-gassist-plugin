@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "afterburner-gassist-plugin"
+version = "0.1.0"
+description = "NVIDIA G-Assist plugin for MSI Afterburner (safe, capability-gated monitoring & control)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+# Runtime is standard library only. Windows named-shared-memory access uses ctypes against
+# kernel32 (mmap cannot attach to another process's named section). The G-Assist protocol
+# transport is provided by the vendored gassist_sdk (see libs/README.txt) at runtime.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "hypothesis>=6"]
+
+[tool.setuptools.packages.find]
+include = ["afterburner*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

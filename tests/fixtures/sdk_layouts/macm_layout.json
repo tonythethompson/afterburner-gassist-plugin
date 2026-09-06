@@ -1,0 +1,784 @@
+{
+  "constants": {
+    "MACM_SHARED_MEMORY_COMMAND_FLUSH": "0x00ab0001",
+    "MACM_SHARED_MEMORY_COMMAND_FLUSH_WITHOUT_APPLYING": "0x00ab0002",
+    "MACM_SHARED_MEMORY_COMMAND_INIT": "0x00ab0000",
+    "MACM_SHARED_MEMORY_COMMAND_REFRESH_VF_CURVE": "0x00ab0003",
+    "MACM_SHARED_MEMORY_FLAG_LINK": "0x00000001",
+    "MACM_SHARED_MEMORY_FLAG_LINK_THERMAL": "0x00000004",
+    "MACM_SHARED_MEMORY_FLAG_SYNC": "0x00000002",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FAN_FLAG_AUTO": "0x00000001",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_AUX2_VOLTAGE": "0x00008000",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_AUX2_VOLTAGE_BOOST": "0x00010000",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_AUX_VOLTAGE": "0x00000040",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_AUX_VOLTAGE_BOOST": "0x00000200",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_CORE_CLOCK": "0x00000001",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_CORE_CLOCK_BOOST": "0x00000800",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_CORE_VOLTAGE": "0x00000010",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_CORE_VOLTAGE_BOOST": "0x00000080",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_FAN_SPEED": "0x00000008",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_MEMORY_CLOCK": "0x00000004",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_MEMORY_CLOCK_BOOST": "0x00001000",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_MEMORY_VOLTAGE": "0x00000020",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_MEMORY_VOLTAGE_BOOST": "0x00000100",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_POWER_LIMIT": "0x00000400",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_SHADER_CLOCK": "0x00000002",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_SYNCHRONIZED_WITH_MASTER": "0x80000000",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_THERMAL_LIMIT": "0x00002000",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_THERMAL_PRIORITIZE": "0x00004000",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_VF_CURVE": "0x00020000",
+    "MACM_SHARED_MEMORY_GPU_ENTRY_FLAG_VF_CURVE_ENABLED": "0x00040000",
+    "MACM_SHARED_MEMORY_VF_CURVE_POINTS_MAX": "0x00000100",
+    "MACM_SHARED_MEMORY_VF_CURVE_TUPLES_MAX": "0x00000004"
+  },
+  "from": {
+    "afterburner_version": "4.6.7.17439",
+    "header_sha256": "758882c1339d0c473d75ee80b7c7087e6f809a13c35d2024a7c08595d37b969c"
+  },
+  "header": "MACMSharedMemory.h",
+  "schema": "sdk-layout/1",
+  "signature": "MACM",
+  "structs": {
+    "MACM_SHARED_MEMORY_GPU_ENTRY": {
+      "alignment": 4,
+      "fields": [
+        {
+          "kind": "scalar",
+          "name": "dwFlags",
+          "offset": 0,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreClockCur",
+          "offset": 4,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreClockMin",
+          "offset": 8,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreClockMax",
+          "offset": 12,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreClockDef",
+          "offset": 16,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwShaderClockCur",
+          "offset": 20,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwShaderClockMin",
+          "offset": 24,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwShaderClockMax",
+          "offset": 28,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwShaderClockDef",
+          "offset": 32,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryClockCur",
+          "offset": 36,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryClockMin",
+          "offset": 40,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryClockMax",
+          "offset": 44,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryClockDef",
+          "offset": 48,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFanSpeedCur",
+          "offset": 52,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFanFlagsCur",
+          "offset": 56,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFanSpeedMin",
+          "offset": 60,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFanSpeedMax",
+          "offset": 64,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFanSpeedDef",
+          "offset": 68,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFanFlagsDef",
+          "offset": 72,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreVoltageCur",
+          "offset": 76,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreVoltageMin",
+          "offset": 80,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreVoltageMax",
+          "offset": 84,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreVoltageDef",
+          "offset": 88,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryVoltageCur",
+          "offset": 92,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryVoltageMin",
+          "offset": 96,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryVoltageMax",
+          "offset": 100,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryVoltageDef",
+          "offset": 104,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAuxVoltageCur",
+          "offset": 108,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAuxVoltageMin",
+          "offset": 112,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAuxVoltageMax",
+          "offset": 116,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAuxVoltageDef",
+          "offset": 120,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreVoltageBoostCur",
+          "offset": 124,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreVoltageBoostMin",
+          "offset": 128,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreVoltageBoostMax",
+          "offset": 132,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreVoltageBoostDef",
+          "offset": 136,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryVoltageBoostCur",
+          "offset": 140,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryVoltageBoostMin",
+          "offset": 144,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryVoltageBoostMax",
+          "offset": 148,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryVoltageBoostDef",
+          "offset": 152,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAuxVoltageBoostCur",
+          "offset": 156,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAuxVoltageBoostMin",
+          "offset": 160,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAuxVoltageBoostMax",
+          "offset": 164,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAuxVoltageBoostDef",
+          "offset": 168,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwPowerLimitCur",
+          "offset": 172,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwPowerLimitMin",
+          "offset": 176,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwPowerLimitMax",
+          "offset": 180,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwPowerLimitDef",
+          "offset": 184,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreClockBoostCur",
+          "offset": 188,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreClockBoostMin",
+          "offset": 192,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreClockBoostMax",
+          "offset": 196,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCoreClockBoostDef",
+          "offset": 200,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryClockBoostCur",
+          "offset": 204,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryClockBoostMin",
+          "offset": 208,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryClockBoostMax",
+          "offset": 212,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMemoryClockBoostDef",
+          "offset": 216,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwThermalLimitCur",
+          "offset": 220,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwThermalLimitMin",
+          "offset": 224,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwThermalLimitMax",
+          "offset": 228,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwThermalLimitDef",
+          "offset": 232,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwThermalPrioritizeCur",
+          "offset": 236,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwThermalPrioritizeDef",
+          "offset": 240,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAux2VoltageCur",
+          "offset": 244,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAux2VoltageMin",
+          "offset": 248,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAux2VoltageMax",
+          "offset": 252,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAux2VoltageDef",
+          "offset": 256,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAux2VoltageBoostCur",
+          "offset": 260,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAux2VoltageBoostMin",
+          "offset": 264,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAux2VoltageBoostMax",
+          "offset": 268,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwAux2VoltageBoostDef",
+          "offset": 272,
+          "size": 4,
+          "type": "LONG"
+        },
+        {
+          "kind": "struct",
+          "name": "vfCurve",
+          "offset": 276,
+          "size": 3224,
+          "type": "MACM_SHARED_MEMORY_VF_CURVE"
+        },
+        {
+          "count": 260,
+          "kind": "chars",
+          "name": "szGpuId",
+          "offset": 3500,
+          "size": 260,
+          "type": "char"
+        }
+      ],
+      "size": 3760
+    },
+    "MACM_SHARED_MEMORY_HEADER": {
+      "alignment": 4,
+      "fields": [
+        {
+          "kind": "scalar",
+          "name": "dwSignature",
+          "offset": 0,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwVersion",
+          "offset": 4,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwHeaderSize",
+          "offset": 8,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwNumGpuEntries",
+          "offset": 12,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwGpuEntrySize",
+          "offset": 16,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwMasterGpu",
+          "offset": 20,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFlags",
+          "offset": 24,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "time",
+          "offset": 28,
+          "size": 4,
+          "type": "time_t"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwCommand",
+          "offset": 32,
+          "size": 4,
+          "type": "DWORD"
+        }
+      ],
+      "size": 36
+    },
+    "MACM_SHARED_MEMORY_POWER_TUPLE_ENTRY": {
+      "alignment": 4,
+      "fields": [
+        {
+          "kind": "scalar",
+          "name": "dwPowerCur",
+          "offset": 0,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwPowerDef",
+          "offset": 4,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFrequencyCur",
+          "offset": 8,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFrequencyDef",
+          "offset": 12,
+          "size": 4,
+          "type": "DWORD"
+        }
+      ],
+      "size": 16
+    },
+    "MACM_SHARED_MEMORY_THERMAL_TUPLE_ENTRY": {
+      "alignment": 4,
+      "fields": [
+        {
+          "kind": "scalar",
+          "name": "dwTemperatureCur",
+          "offset": 0,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwTemperatureDef",
+          "offset": 4,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFrequencyCur",
+          "offset": 8,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFrequencyDef",
+          "offset": 12,
+          "size": 4,
+          "type": "DWORD"
+        }
+      ],
+      "size": 16
+    },
+    "MACM_SHARED_MEMORY_VF_CURVE": {
+      "alignment": 4,
+      "fields": [
+        {
+          "kind": "scalar",
+          "name": "dwVersion",
+          "offset": 0,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFlags",
+          "offset": 4,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwPoints",
+          "offset": 8,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "count": 256,
+          "kind": "struct-array",
+          "name": "vfPoints",
+          "offset": 12,
+          "size": 3072,
+          "type": "MACM_SHARED_MEMORY_VF_POINT_ENTRY"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwLockIndex",
+          "offset": 3084,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwPowerTuples",
+          "offset": 3088,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "count": 4,
+          "kind": "struct-array",
+          "name": "powerTuples",
+          "offset": 3092,
+          "size": 64,
+          "type": "MACM_SHARED_MEMORY_POWER_TUPLE_ENTRY"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwThermalTuples",
+          "offset": 3156,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "count": 4,
+          "kind": "struct-array",
+          "name": "thermalTuples",
+          "offset": 3160,
+          "size": 64,
+          "type": "MACM_SHARED_MEMORY_THERMAL_TUPLE_ENTRY"
+        }
+      ],
+      "size": 3224
+    },
+    "MACM_SHARED_MEMORY_VF_POINT_ENTRY": {
+      "alignment": 4,
+      "fields": [
+        {
+          "kind": "scalar",
+          "name": "dwVoltageuV",
+          "offset": 0,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFrequency",
+          "offset": 4,
+          "size": 4,
+          "type": "DWORD"
+        },
+        {
+          "kind": "scalar",
+          "name": "dwFrequencyOffset",
+          "offset": 8,
+          "size": 4,
+          "type": "LONG"
+        }
+      ],
+      "size": 12
+    }
+  },
+  "version": "0x00020000"
+}

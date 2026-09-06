@@ -13,53 +13,63 @@ Build order: scaffolding → typed models & error taxonomy → `AfterburnerInter
 manifest, packaging, and docs. Each task builds on the previous ones and ends by wiring code into
 the running plugin — no orphaned code and no big-bang integration at the end.
 
-The 8 design Correctness Properties (P1–P8) are implemented as Hypothesis property-based tests,
+The 10 design Correctness Properties (P1–P10) are implemented as Hypothesis property-based tests,
 placed next to the code they validate so regressions surface early.
 
-Testing tools: `pytest` (unit) + `Hypothesis` (property-based). All tests run with
-`FakeAfterburner`; only the two OS/shared-memory modules (MAHM monitoring, MACM control) touch
-the real system and are covered by **optional** integration tests where practical.
+Testing tools: `pytest` (unit) + `Hypothesis` (property-based). All domain tests run with
+`FakeAfterburner`; the OS-touching modules — MAHM monitoring, MACM control, and the read-only
+profile-file reader — are covered by dedicated tests against sandboxed fixtures, plus
+**optional** integration tests where practical. The `ctypes` struct bindings for both
+shared-memory interfaces are additionally checked against the committed SDK-layout reference
+fixtures (`tests/fixtures/sdk_layouts/`, task 18.3; binding checks in tasks 18.4 and 20.3), which
+`tools/generate_sdk_layout_fixtures.py` regenerates (`--generate`) or diffs (`--diff`) against
+the installed `SDK\Include\*.h` headers.
 
 ---
 
 ## Tasks
 
-- [ ] 1. Scaffold the plugin package, dependencies, and test harness
+- [x] 1. Scaffold the plugin package, dependencies, and test harness
   - Create the plugin package layout under the spec project folder: an `afterburner/` package
     (protocol, safety, services, integration subpackages), a top-level `plugin.py` entry point
     placeholder, a `tests/` directory, and a `libs/` folder placeholder for the vendored `gassist_sdk`.
   - Add `requirements.txt` (runtime) and `requirements-dev.txt` (dev) with minimal deps only:
-    runtime = standard library + vendored `gassist_sdk` (document that `mmap`/`ctypes` are stdlib);
+    runtime = standard library + vendored `gassist_sdk` (document that Windows named-shared-memory
+    access uses `ctypes` against `kernel32` — stdlib only; `mmap` cannot attach to another process's
+    named section);
     dev = `pytest`, `hypothesis`. Avoid heavyweight/optional deps (pydantic stays optional/unused).
   - Add `pytest.ini`/`pyproject.toml` test config (test discovery, Hypothesis profile with a
     minimum of 100 examples per property test) and a placeholder `tests/conftest.py`.
   - _Requirements: 17.1, 18.1_
 
-- [ ] 2. Define strongly-typed domain models and the error taxonomy
-  - [ ] 2.1 Implement enums and value objects
+- [x] 2. Define strongly-typed domain models and the error taxonomy
+  - [x] 2.1 Implement enums and value objects
     - Create `afterburner/models.py` with `InterfaceStatus`, `ControlFeature`, `RiskLevel`,
       `ErrorCode`, `DiagnosisCause`, and the `Range` value object (`clamp`, `contains`).
     - _Requirements: 2.1, 5.5, 6.1, 13.1_
-  - [ ] 2.2 Implement dataclass models
-    - Add `GpuLimits`, `GpuCapabilities` (with `supports()`), `GpuTelemetry` (with `sampled_at`,
-      `is_stale`), `TuningState`, `Profile`, `FanCurvePoint`, `FanCurve`, `ControlResult`,
-      `Diagnosis`, and the `PluginError(Exception)` type (`code`, `user_message`, `detail`).
+  - [x] 2.2 Implement dataclass models
+    - Add `GpuLimits` (with `fan_curve_max_points`), `GpuCapabilities` (with `supports()`),
+      `GpuTelemetry` (with `sampled_at`, `is_stale`, `driver_version`), `TuningState`, `Profile`,
+      `FanCurvePoint`, `FanCurve`, `ControlResult`, `Diagnosis`, and the `PluginError(Exception)`
+      type (`code`, `user_message`, `detail`), plus the tuning-ownership types
+      `AuthorityState`, `AfterburnerAuthoritySnapshot`, and `TuningOwnershipReport` (single
+      shared GPU tuning state; external authorities always `unknown_not_observable`).
     - Add a `rangeFor(feature)` helper on `GpuLimits` used by the validator.
-    - _Requirements: 3.1, 5.1, 6.5, 10.1, 12.2, 12.3, 13.1_
-  - [ ]* 2.3 Write unit tests for models and `Range`
+    - _Requirements: 3.1, 5.1, 6.5, 10.1, 12.2, 12.3, 13.1, 19.1, 19.3_
+  - [x]* 2.3 Write unit tests for models and `Range`
     - Test `Range.clamp`/`contains` at/inside/outside bounds and inverted/degenerate ranges;
       test `GpuCapabilities.supports` and `GpuLimits.rangeFor`.
     - _Requirements: 5.5, 5.6, 6.2_
 
-- [ ] 3. Define the `AfterburnerInterface` Protocol and implement `FakeAfterburner`
-  - [ ] 3.1 Declare the adapter Protocol (the mock boundary)
+- [x] 3. Define the `AfterburnerInterface` Protocol and implement `FakeAfterburner`
+  - [x] 3.1 Declare the adapter Protocol (the mock boundary)
     - Create `afterburner/integration/interface.py` with a `runtime_checkable` `AfterburnerInterface`
       exposing exactly: `detect`, `get_version`, `read_telemetry`, `read_all_telemetry`,
       `read_capabilities`, `read_tuning_state`, `list_profiles`, `load_profile`, `reset_tuning`,
       `apply_control`, `apply_fan_curve`. Deliberately include **no** generic `write(offset, value)`
       primitive.
     - _Requirements: 14.1, 17.1_
-  - [ ] 3.2 Implement `FakeAfterburner`
+  - [x] 3.2 Implement `FakeAfterburner`
     - Create `afterburner/integration/fake.py` implementing `AfterburnerInterface` fully in memory:
       configurable detect status, telemetry (including missing/null fields and malformed records),
       capability sets/limits, profiles, and control results. Record every `apply_control`/
@@ -67,289 +77,544 @@ the real system and are covered by **optional** integration tests where practica
     - Support simulating unavailability modes (not installed, not running, interface absent,
       disconnected mid-op) and a stalled MAHM update counter.
     - _Requirements: 17.2, 17.3, 7.4, 16.3_
-  - [ ]* 3.3 Write structural test that no generic memory-write primitive exists — **Property 6**
+  - [x]* 3.3 Write structural test that no generic memory-write primitive exists — **Property 6**
     - **Property 6: No arbitrary memory access — only named validated controls**
     - Assert the `AfterburnerInterface` public surface contains only the enumerated named
       operations and no `write`/`poke`/offset/address-taking method; assert `FakeAfterburner`
       conforms via `isinstance` runtime check.
     - **Validates: Requirements 14.1, 14.2, 14.3**
 
-- [ ] 4. Implement `HardwareCapabilityResolver` (capability detection & gating)
-  - [ ] 4.1 Implement capability resolution
+- [x] 4. Implement `HardwareCapabilityResolver` (capability detection & gating)
+  - [x] 4.1 Implement capability resolution
     - Create `afterburner/safety/capabilities.py` implementing `resolveCapabilities(gpu_index)`:
       derive supported controls from Afterburner-reported flags + min/max only (no hardcoded
       per-GPU assumptions); require functional MACM for write-capable features; expose read-only +
       `PROFILE_LOAD`/`PROFILE_RESET` when control is unavailable; treat inverted/missing ranges as
       unavailable; time-box resolution to 5s → read-only + error indication.
     - _Requirements: 5.1, 5.2, 5.3, 5.6_
-  - [ ]* 4.2 Write unit tests for capability detection
+  - [x]* 4.2 Write unit tests for capability detection
     - Cover supported/unsupported/mixed capability sets, MACM-unavailable (read-only) degradation,
       inverted/missing ranges → unavailable, and resolution timeout → read-only.
     - _Requirements: 5.1, 5.2, 5.3, 5.6_
-  - [ ]* 4.3 Write property test for capability gating — **Property 2**
+  - [x]* 4.3 Write property test for capability gating — **Property 2**
     - **Property 2: Capability gating — unsupported features are never actuated**
     - Over randomized capability sets, assert that for every feature not in the supported set no
       adapter write is invoked and a typed `UNSUPPORTED_FEATURE` error is returned.
     - **Validates: Requirements 5.3, 6.4, 7.1, 8.5**
 
-- [ ] 5. Implement `TuningValidator` (validation, clamping, fan-curve rules)
-  - [ ] 5.1 Implement value validation & clamping
+- [x] 5. Implement `TuningValidator` (validation, clamping, fan-curve rules)
+  - [x] 5.1 Implement value validation & clamping
     - Create `afterburner/safety/validator.py` implementing `validateAndClamp(gpu_index, feature,
       requested_value)`: reject unsupported features (`UNSUPPORTED_FEATURE`), reject missing limits
       (`INTERFACE_UNAVAILABLE`), reject NaN/±inf (`INVALID_VALUE`), otherwise clamp to reported
       `[min,max]` and return `(safe_value, clamped)`.
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 14.4, 14.5_
-  - [ ] 5.2 Implement fan-curve validation
-    - Implement `validateFanCurve(gpu_index, curve)`: require `FAN_CURVE` support; require 2–32
-      points; enforce non-decreasing temperatures; clamp each point's temp/fan into reported ranges;
+  - [x] 5.2 Implement fan-curve validation
+    - Implement `validateFanCurve(gpu_index, curve)`: require `FAN_CURVE` support; require 2 to
+      `fan_curve_max_points` points (Afterburner-reported max, default 2, never exceeding 32);
+      enforce non-decreasing temperatures; clamp each point's temp/fan into reported ranges;
       raise typed `INVALID_VALUE`/`UNSUPPORTED_FEATURE` and leave prior config unchanged on failure.
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
-  - [ ]* 5.3 Write unit tests for tuning & safety boundaries
+  - [x]* 5.3 Write unit tests for tuning & safety boundaries
     - Clamp at/inside/outside min & max, reject NaN/inf, unsupported feature error, missing-range
       error, and report requested-vs-applied values.
     - _Requirements: 6.3, 6.4, 6.5, 6.6, 13.6, 13.7_
-  - [ ]* 5.4 Write property test for clamping invariant — **Property 1**
+  - [x]* 5.4 Write property test for clamping invariant — **Property 1**
     - **Property 1: Clamping invariant — no raw LLM value reaches hardware**
     - Generate arbitrary requested values (far below min, far above max, boundary) against
       randomized reported ranges; assert the value handed to the adapter is always `∈ [min,max]`.
     - **Validates: Requirements 6.1, 6.2, 6.5, 5.4, 7.1, 13.5, 14.4**
-  - [ ]* 5.5 Write property test for fan-curve monotonicity & bounds — **Property 3**
+  - [x]* 5.5 Write property test for fan-curve monotonicity & bounds — **Property 3**
     - **Property 3: Fan-curve monotonicity and bounds**
     - Generate random candidate curves; assert accepted curves are non-decreasing in temperature
       and every point is within reported bounds, and curves violating monotonicity/point-count are
       rejected.
     - **Validates: Requirements 8.1, 8.2, 8.3, 8.4**
 
-- [ ] 6. Implement `SafetyPolicy` (risk classification & confirm-token lifecycle)
-  - [ ] 6.1 Implement risk classification and confirm tokens
+- [x] 6. Implement `SafetyPolicy` (risk classification & confirm-token lifecycle)
+  - [x] 6.1 Implement risk classification and confirm tokens
     - Create `afterburner/safety/policy.py`: classify each function as LOW/HIGH risk (reads,
       `reset_tuning`, `load_profile` = LOW; `set_*`, `optimize_*` = HIGH); issue single-use tokens
       with `CONFIRM_TOKEN_TTL_SECONDS = 300`; `validateToken` rejects missing/expired/reused tokens
       and marks valid tokens consumed.
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 11.6_
-  - [ ]* 6.2 Write unit tests for the confirmation flow
+  - [x]* 6.2 Write unit tests for the confirmation flow
     - Issue → validate → consume; reject reused token; reject expired token; reject missing token;
       LOW-risk ops bypass confirmation.
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
-  - [ ]* 6.3 Write property test for confirmation before high-risk ops — **Property 4**
+  - [x]* 6.3 Write property test for confirmation before high-risk ops — **Property 4**
     - **Property 4: Confirmation before high-risk operations**
     - Over randomized token lifecycles (issue/validate/expire/replay), assert a high-risk write
       occurs only with a currently-valid token and never on missing/expired/reused tokens.
     - **Validates: Requirements 9.1, 9.2, 9.3, 9.4, 11.4**
 
-- [ ] 7. Implement `AfterburnerClient` facade over the integration layer
+- [x] 7. Implement `AfterburnerClient` facade over the integration layer
   - Create `afterburner/integration/client.py`: hold the injected `AfterburnerInterface`, orchestrate
     detect/read/profile/control calls, and translate raw adapter failures into typed `PluginError`s
     (graceful degradation; never raise unhandled). Reject Afterburner-dependent operations when no
     interface is injected.
   - _Requirements: 7.4, 7.5, 13.3, 13.4, 17.1, 17.4_
 
-- [ ] 8. Implement `TelemetryService` (caching & staleness)
-  - [ ] 8.1 Implement cache + rate limiting + staleness
-    - Create `afterburner/services/telemetry.py` with `TELEMETRY_TTL_SECONDS`,
-      `STALE_THRESHOLD_SECONDS`, `MIN_POLL_INTERVAL_SECONDS`; serve cache within TTL; enforce min
-      poll interval; flag `is_stale` past threshold or when the MAHM update counter stalls; include
+- [x] 8. Implement `TelemetryService` (caching & staleness)
+  - [x] 8.1 Implement cache + rate limiting + staleness
+    - Create `afterburner/services/telemetry.py` with `TELEMETRY_TTL_SECONDS = 2`,
+      `MIN_POLL_INTERVAL_SECONDS = 1`, `STALE_THRESHOLD_SECONDS = 5`; serve cache within TTL;
+      enforce min poll interval; flag `is_stale` past threshold or when the MAHM update counter
+      stalls; include
       telemetry age and ISO-8601 millisecond timestamps; parse well-formed and malformed MAHM
       records without fabricating values.
     - _Requirements: 3.1, 3.2, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7_
-  - [ ]* 8.2 Write unit tests for telemetry parsing, caching & staleness
+  - [x]* 8.2 Write unit tests for telemetry parsing, caching & staleness
     - Well-formed and malformed MAHM records, missing-field → explicit unavailable (no fabricated
       values), multi-GPU indexing, cache hit within TTL, rate-limit enforcement, stale flag past
       threshold, and stalled-counter detection.
     - _Requirements: 3.2, 3.5, 3.6, 4.4, 4.5, 4.6, 4.7_
-  - [ ]* 8.3 Write property test for caching & rate invariant — **Property 8**
+  - [x]* 8.3 Write property test for caching & rate invariant — **Property 8**
     - **Property 8: Telemetry caching and rate invariant**
-    - Issue bursts of reads with randomized timing; assert reads inside the staleness window are
-      served from cache (bounded underlying poll count) and reads past the threshold are flagged
+    - Issue bursts of reads with randomized timing; assert reads inside the TTL window are served
+      from cache (bounded underlying poll count) and reads past the threshold are flagged
       `is_stale=True`.
     - **Validates: Requirements 4.1, 4.2, 4.3**
 
-- [ ] 9. Implement `ProfileManager` (list / active / load / reset)
-  - [ ] 9.1 Implement profile operations
-    - Create `afterburner/services/profiles.py`: `get_profiles` (exactly one active; empty list when
-      none), `load_profile` (validate id, reject unknown id leaving active unchanged), `reset_profile`;
-      mark create/update best-effort or unavailable (never a false success).
-    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7_
-  - [ ]* 9.2 Write unit tests for profile handling
-    - List with one active, empty list, load valid/invalid id, reset, and best-effort/unavailable
-      classification for create/update.
-    - _Requirements: 10.1, 10.2, 10.4, 10.7_
+- [x] 9. Implement `ProfileManager` (list / active / load / reset)
+  - [x] 9.1 Implement profile operations
+    - Create the read-only profile-file reader (behind `AfterburnerInterface`) and
+      `afterburner/services/profiles.py`, per the design document's profile storage layout:
+      READ-ONLY scan of the detected installation's Profiles directory (Requirement 14.3); pick
+      the per-GPU `VEN_…&FN_*.cfg` file whose name matches the target GPU MAHM `szGpuId`
+      (documented in the shipped `MAHMSharedMemory.h` as the `VEN_%04X&…&FN_%d` encoding); treat
+      empty slots in either observed form (absent `[ProfileN]` section or `Format=2`-only section);
+      skip non-tuning `[Defaults]`/`[Settings]` sections; treat `[Startup]` as auto-apply
+      corroboration only (populated = enabled, empty = disabled); never parse either
+      `MSIAfterburner.cfg` copy; never write/create/delete in the directory. `get_profiles`
+      (at most one active — none when control state is unavailable or ambiguous; empty list when
+      none), `load_profile` (parse `[ProfileN]` settings, route every value through the same
+      clamp/validation as LLM-supplied values, apply only named validated controls via the
+      control interface — capability-gated; reject unknown id leaving active unchanged),
+      `reset_profile`; profile apply/reset while the control interface is unavailable returns
+      typed `INTERFACE_UNAVAILABLE`/best-effort — never a fabricated list or false success.
+    - _Requirements: 10.1–10.9_
+  - [x]* 9.2 Write unit tests for profile handling
+    - List with one active, empty list, load valid/invalid id, reset, read-only enforcement (no
+      writes to the Profiles directory), and best-effort/unavailable classification when the
+      control interface is absent.
+    - _Requirements: 10.1–10.8_
 
-- [ ] 10. Implement `DiagnosticsService` (evidence-based classification)
-  - [ ] 10.1 Implement diagnosis classification
+- [x]* 9.3 Write security acceptance tests for the read-only Profiles-directory guarantee — **Property 9**
+    - Sandbox a copy of a Profiles directory taken from the task 9.7 fixtures (real 4.6.7
+      layout, incl. the populated/empty `[Startup]` A/B pair and the empty-slot variant). Run Hypothesis-randomized adversarial function arguments (path/traversal/absolute-
+      path-looking profile identifiers, arbitrary strings) and adversarial profile contents
+      (malformed INI, path-like and traversal values in setting keys, oversized/duplicate
+      sections, unexpected section names) through `list_profiles` / `load_profile` /
+      `reset_profile` and capability resolution; assert after every operation that the directory
+      tree (names, sizes, mtimes, content hashes) is unchanged and that no write-capable handle
+      is ever requested on the directory or its files. These tests exercise the real read-only
+      profile-file reader on fixture directories; no Afterburner installation is required.
+    - _Requirements: 14.3, 14.6, 14.7, 14.8, 10.1_
+
+- [x] 9.4 Implement `TuningOwnershipService` (single shared GPU tuning state)
+    - Create `afterburner/services/ownership.py`: compose `AfterburnerClient` reads (`detect`,
+      `read_tuning_state`) with `ProfileManager`'s active-profile match and populated `[Startup]` auto-apply
+      presence into the typed `TuningOwnershipReport`; mark every external authority (NVIDIA App
+      Automatic Tuning, G-Assist native tuning, other OC utilities) `UNKNOWN_NOT_OBSERVABLE` —
+      never asserted, never modified; complete as success without a write when Afterburner's
+      applied state already equals the requested value within tolerance; build the ownership
+      clause used by risky-control confirmation prompts.
+    - _Requirements: 19.1, 19.2, 19.3, 19.4, 19.5_
+
+- [x]* 9.5 Write unit tests for tuning-ownership reporting
+    - Report marks external authorities `unknown_not_observable` in every state; summary never
+      claims stacking or asserts external state; no-op success (no adapter write) when applied
+      state equals the request; risky confirmations carry the ownership clause.
+    - _Requirements: 19.1, 19.2, 19.3, 19.4_
+
+- [x]* 9.6 Write property test for tuning-ownership honesty — **Property 10**
+    - **Property 10: Tuning-ownership honesty — no stacking claims, no fabricated
+      external-authority knowledge**
+    - Over randomized `FakeAfterburner` ownership states, assert (a) external authorities always
+      report `unknown_not_observable`; (b) applied state equal to the request results in success
+      with no adapter write; (c) risky-control confirmations carry the ownership clause.
+    - **Validates: Requirements 19.1, 19.2, 19.3, 19.4, 19.5**
+
+- [x]* 9.7 Create profile-layout fixtures for the sandbox tests — incl. the `[Startup]` A/B pair
+    - Add `tests/fixtures/profiles/` mirroring a real Afterburner 4.6.7 Profiles directory per the
+      design profile layout, one variant per scenario. The Property 9 tests (9.3) deep-copy a
+      variant into a sandbox and mutate only the copy; canonical fixtures are never opened for
+      writing. Layout:
+      ```
+      Profiles/
+      +- Profile1.cfg  Profile2.cfg  Profile3.cfg     # markers ([Settings] / ProfileContents=1)
+      +- MSIAfterburner.cfg                            # global: RememberSettings, LockProfiles, fan blob
+      +- VEN_10DE&DEV_2F04&SUBSYS_89E61043&REV_A1&BUS_11&DEV_0&FN_0.cfg   # per-GPU tuning file
+      ```
+      The per-GPU file carries `[Startup]`, `[Profile1..3]`, `[Defaults]`, and `[Settings]`
+      (`CaptureDefaults=0`) sections with representative values observed on 4.6.7: `Format=2`,
+      `PowerLimit=100`, `CoreClkBoost=95000`, `MemClkBoost=200000/400000/600000` per slot,
+      `FanMode=1`, `FanSpeed=31` in the slots (30 in `[Defaults]`), `CoreVoltageBoost=0`, and a
+      `VFCurve` hex blob (canonical fixtures copy the captured bytes; inline examples use a
+      short deterministic placeholder).
+    - **`[Startup]` A/B variants** (drive startup-auto-apply detection and the immutable-tree
+      assertions):
+      ```
+      A - disabled (all keys empty):      B - enabled (populated, observed on 4.6.7):
+      [Startup]                           [Startup]
+      Format=2                            Format=2
+      PowerLimit=                         PowerLimit=100
+      CoreClkBoost=                       CoreClkBoost=95000
+      VFCurve=                            VFCurve=<hex placeholder>
+      MemClkBoost=                        MemClkBoost=200000
+      FanMode=                            FanMode=1
+      FanSpeed=                           FanSpeed=30
+      FanMode2=                           FanMode2=
+      FanSpeed2=                          FanSpeed2=
+      CoreVoltageBoost=                   CoreVoltageBoost=0
+      ```
+      Variant B pairs with `RememberSettings=1` in `MSIAfterburner.cfg`; variant A with
+      `RememberSettings=0`. An additional empty-slot variant omits `[Profile4]`/`[Profile5]`
+      sections and their markers (observed when fewer than five slots are saved).
+    - Fixtures are reused by profile parsing/listing unit tests (9.2) and by ownership reporting
+      (9.5) for the populated-vs-empty `[Startup]` cases.
+    - _Requirements: 10.1, 14.3, 14.8_
+
+- [x] 10. Implement `DiagnosticsService` (evidence-based classification)
+  - [x] 10.1 Implement diagnosis classification
     - Create `afterburner/services/diagnostics.py` implementing `diagnosePerformance(gpu_index)`:
       return `UNKNOWN_INSUFFICIENT_DATA` when telemetry is stale/missing essential fields; otherwise
       classify one of thermal/power/voltage/utilization-bottleneck/CPU-limited/app-behavior with
       non-empty evidence (field name + value) and a confidence strictly between 0.0 and 1.0.
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
-  - [ ]* 10.2 Write unit tests for diagnostics
+  - [x]* 10.2 Write unit tests for diagnostics
     - Each limiter branch with representative telemetry; evidence contains field name + value;
       confidence within (0.0, 1.0); stale/missing → `UNKNOWN_INSUFFICIENT_DATA`.
     - _Requirements: 12.1, 12.2, 12.4, 12.5_
-  - [ ]* 10.3 Write property test for diagnostics honesty — **Property 5**
+  - [x]* 10.3 Write property test for diagnostics honesty — **Property 5**
     - **Property 5: Diagnostics never overclaim on stale or missing data**
     - Inject stale/missing/malformed telemetry; assert every inferred-cause diagnosis has
       `confidence < 1.0` and insufficient inputs always return `UNKNOWN_INSUFFICIENT_DATA`.
     - **Validates: Requirements 12.3, 12.4**
 
-- [ ] 11. Implement optimization intents (`optimize_quiet`, `optimize_thermal`)
-  - [ ] 11.1 Implement focused fan/thermal optimization
+- [x] 11. Implement optimization intents (`optimize_quiet`, `optimize_thermal`)
+  - [x] 11.1 Implement focused fan/thermal optimization
     - In `afterburner/services/optimize.py`: `optimize_quiet` (reduce fan setpoint ≥10 pts while
       keeping temp ≤83°C, else error) and `optimize_thermal` (target 40–95°C inclusive, reject
       out-of-range/non-numeric); restrict changes to fan/thermal controls only; route through
       validator + safety confirmation.
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6_
-  - [ ]* 11.2 Write unit tests for optimization intents
+  - [x]* 11.2 Write unit tests for optimization intents
     - Quiet reduces fan while respecting temp limit (and refuses when impossible); thermal accepts
       in-range targets and rejects out-of-range/non-numeric; assert clock/voltage/power/memory are
       never modified.
     - _Requirements: 11.1, 11.2, 11.4, 11.5_
 
-- [ ] 12. Implement the typed error → user-facing message mapping
-  - [ ] 12.1 Implement the error mapper
+- [x] 12. Implement the typed error → user-facing message mapping
+  - [x] 12.1 Implement the error mapper
     - Create `afterburner/errors.py` mapping every `ErrorCode` to a user-facing message (condition +
       affected component/value + next action) and to a Protocol V2 error code; unmatched conditions
-      map to `COMM_FAILURE`; `LIMIT_VIOLATION` messages state both requested and clamped values;
-      `DISCONNECTED` states nothing was changed.
+      map to `COMM_FAILURE`. Clamping is a success `ControlResult` (message states requested and
+      applied values) and is never an error; `DISCONNECTED` states nothing was changed.
     - _Requirements: 13.1, 13.2, 13.3, 13.5, 13.6, 13.7_
-  - [ ]* 12.2 Write unit tests for the error taxonomy → message mapping
+  - [x]* 12.2 Write unit tests for the error taxonomy → message mapping
     - Every `ErrorCode` yields a non-empty actionable message and correct V2 code; unknown →
-      `COMM_FAILURE`; limit-violation message includes requested + clamped values.
+      `COMM_FAILURE`; clamped success results include requested + applied values and are not errors.
     - _Requirements: 13.1, 13.2, 13.3, 13.6, 13.7_
 
-- [ ] 13. Checkpoint — Ensure all tests pass
-  - Ensure all unit and property tests (Properties 1–6, 8) pass against `FakeAfterburner`. Ask the
+- [x] 13. Checkpoint — Ensure all tests pass
+  - Ensure all unit and property tests (Properties 1–6, 8, 9, 10) pass against `FakeAfterburner`. Ask the
     user if questions arise.
 
-- [ ] 14. Implement the G-Assist Protocol V2 transport (`GAssistProtocol`)
-  - [ ] 14.1 Implement framing and JSON-RPC transport
+- [x] 14. Implement the G-Assist Protocol V2 transport (`GAssistProtocol`)
+  - [x] 14.1 Implement framing and JSON-RPC transport
     - Create `afterburner/protocol/transport.py`: 4-byte big-endian length-prefixed UTF-8 JSON-RPC
       2.0 over stdin/stdout; reject frames > 10 MB and invalid UTF-8/JSON with a parse/invalid-request
       error without terminating the loop; delegate to `gassist_sdk` where available.
     - _Requirements: 1.1, 1.2_
-  - [ ]* 14.2 Write unit tests for framing/transport
+  - [x]* 14.2 Write unit tests for framing/transport
     - Round-trip encode/decode of framed messages; oversized frame rejected; malformed payload →
       error response with loop intact.
     - _Requirements: 1.1, 1.2_
 
-- [ ] 15. Implement the plugin command layer and confirmation wiring (`GAssistPlugin`)
-  - [ ] 15.1 Implement lifecycle and dispatch
+- [x] 15. Implement the plugin command layer and confirmation wiring (`GAssistPlugin`)
+  - [x] 15.1 Implement lifecycle and dispatch
     - Create `afterburner/protocol/plugin.py`: handle `initialize` (≤5s), `ping`→`pong` (≤1s),
       `execute` dispatch (≤30s, unknown function → error, retain state), `shutdown` (release
-      resources, exit ≤5s); register all functions and dispatch to domain services; format
+      resources, exit ≤5s); register all functions (including the read-only `get_tuning_ownership`,
+      dispatched to `TuningOwnershipService`) and dispatch to domain services; format
       NL-friendly responses via the error mapper.
-    - _Requirements: 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 13.4_
-  - [ ] 15.2 Wire the confirmation flow into risky commands
-    - Implement `executeRisky` in the plugin: validate/clamp first, issue confirm token + set
-      `keep_session` for HIGH-risk ops, honor `input` confirm/cancel and the 60s confirmation
-      timeout, and apply only on a valid token/passthrough ack.
-    - _Requirements: 1.10, 1.11, 9.1, 9.2, 9.3, 11.6_
-  - [ ]* 15.3 Write unit tests for the plugin layer (with `FakeAfterburner`)
+    - _Requirements: 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 13.4, 19.3_
+  - [x] 15.2 Wire the confirmation flow into risky commands
+    - Implement `executeRisky` in the plugin: validate/clamp first; HIGH-risk ops without a token
+      return a success `complete` with `needs_confirmation` (never an error). Two confirmation
+      paths: (1) token re-invocation with `CONFIRM_TOKEN_TTL_SECONDS = 300`; (2) passthrough
+      `input` fallback via a registered `on_input` command (ack within 2 s, confirm/cancel within
+      60 s). Apply only on a valid token/passthrough ack. Risky confirmation prompts include
+      the ownership clause (Requirement 19.2); when Afterburner's applied state already equals the
+      requested value, return success without prompting or writing (Requirement 19.4).
+    - _Requirements: 1.10, 1.11, 9.1, 9.2, 9.3, 11.6, 19.2, 19.4_
+  - [x]* 15.3 Write unit tests for the plugin layer (with `FakeAfterburner`)
     - Initialize/ping/execute/shutdown behavior, unknown-function error, risky-op confirm/cancel/
       timeout, and read ops requiring no confirmation.
     - _Requirements: 1.5, 1.7, 1.10, 1.11, 9.4_
-  - [ ]* 15.4 Write property test for graceful degradation — **Property 7**
+  - [x]* 15.4 Write property test for graceful degradation — **Property 7**
     - **Property 7: Graceful degradation — no crash when Afterburner is unavailable**
     - Simulate each unavailability mode (not installed, not running, interface absent, disconnected
       mid-op) via `FakeAfterburner`; assert every call returns a typed `PluginError` with a
       user-facing message and never raises an unhandled exception.
     - **Validates: Requirements 2.6, 7.3, 7.4, 13.3, 16.2, 16.3**
 
-- [ ] 16. Implement the plugin entry point and startup sequence
+- [x] 16. Implement the plugin entry point and startup sequence
   - Implement `plugin.py`: construct the stack (inject the concrete `AfterburnerInterface`), run
     the startup sequence (exactly one capability detection + one telemetry read within 3s, degrade
-    on timeout/absence), and run the protocol message loop.
+    on timeout/absence), and run the protocol message loop. When tasks 18–20 landed, the entry's
+    injected interface became `CombinedAfterburner` — the live `AfterburnerMonitoringClient` (MAHM
+    reads) plus the capability-gated `AfterburnerControlClient` (MACM control) — degrading to the
+    honest `UnavailableAfterburner` state when Afterburner is absent or its shared-memory map is down.
   - _Requirements: 16.1, 16.2, 16.3, 16.4, 17.4_
 
-- [ ] 17. Checkpoint — Ensure all tests pass
-  - Ensure all unit and property tests (Properties 1–8) pass against `FakeAfterburner`. Ask the
+- [x] 17. Checkpoint — Ensure all tests pass
+  - Ensure all unit and property tests (Properties 1–10) pass against `FakeAfterburner`. Ask the
     user if questions arise.
 
-- [ ] 18. Implement the real MAHM monitoring client (official, OS/shared-memory)
-  - [ ] 18.1 Implement `AfterburnerMonitoringClient`
+- [x] 18. Implement the real MAHM monitoring client (official, OS/shared-memory)
+  - [x] 18.1 Implement `AfterburnerMonitoringClient`
     - Create `afterburner/integration/mahm.py` implementing the read-only parts of
-      `AfterburnerInterface` against MAHM shared memory (via `mmap`/`ctypes`): detect/version, parse
-      header + per-GPU entries into typed telemetry, limits, capabilities, and tuning state; never
-      write to MAHM. Note in the module docstring this is the official interface and one of only two
-      OS-touching modules.
+      `AfterburnerInterface` against MAHM shared memory (via `ctypes`/`kernel32`): detect/version,
+      parse header (validate the MAHM signature and interface version v2.0 against the installed
+      `SDK\Include\MAHMSharedMemory.h` layout) + per-GPU entries into typed
+      telemetry, limits, capabilities, and tuning state; never write to MAHM. Note in the module
+      docstring this is the official interface and one of the three OS-touching modules (MAHM,
+      MACM, and the read-only profile-file reader). Wired into the plugin entry point at task 18
+      completion; live-verified on the 4.6.7.17439 install (MAHM v2.0, `dwVersion = 0x00020000`;
+      typed per-GPU telemetry read end-to-end).
     - _Requirements: 3.1, 3.3, 3.5, 2.1, 2.2, 2.3, 2.4, 2.7_
-  - [ ]* 18.2 Write optional integration test for MAHM monitoring
+  - [x]* 18.2 Write optional integration test for MAHM monitoring
     - Opt-in, skipped when Afterburner is absent: read-only smoke test + version/availability
-      detection against a real installation.
+      detection against a real installation. Executed live on the 4.6.7.17439 install: the MAHM
+      map reported the v2.0 signature/version and per-GPU telemetry parsed correctly.
     - _Requirements: 2.1, 3.1_
+  - [x] 18.3 Mirror both SDK struct layouts into committed reference fixtures + add the
+    layout-generation script (MAHM and MACM headers)
+    - Create `tests/fixtures/sdk_layouts/` with committed reference snapshots of the two
+      officially shipped headers as verified on the 4.6.7 install: one JSON per header — MAHM
+      (`MAHM_SHARED_MEMORY_HEADER`, `MAHM_SHARED_MEMORY_ENTRY`, `MAHM_SHARED_MEMORY_GPU_ENTRY`)
+      and MACM (`MACM_SHARED_MEMORY_HEADER`, `MACM_SHARED_MEMORY_GPU_ENTRY`, incl. the nested
+      `VF_POINT_ENTRY` / `POWER_TUPLE_ENTRY` / `THERMAL_TUPLE_ENTRY` / `VF_CURVE`) — recording
+      every field's name, `ctypes` type, size, and offset, plus the header constants (`'MAHM'` /
+      `'MACM'` signatures, `0x00020000` v2.0, MACM `MACM_SHARED_MEMORY_COMMAND_*` values, the
+      GPU-entry flag bits, MAHM `MONITORING_SOURCE_ID_*` and entry-flag values). The fixtures are
+      committed so binding checks always run in CI even when no Afterburner install is present.
+    - Create `tools/generate_sdk_layout_fixtures.py` that parses the installed
+      `SDK\Include\MAHMSharedMemory.h` / `MACMSharedMemory.h` when present:
+      `--generate` rewrites the committed fixtures from the live headers; `--diff` compares and
+      exits non-zero on any field/type/offset/size/constant drift so CI fails when an Afterburner
+      update changes a layout. Run against the live installed header on any version change
+      (per-release re-verification); when the install is absent the diff is skipped and the
+      committed fixtures stand.
+    - Add a CI unit test (no Afterburner install required) validating that the committed
+      fixtures are internally consistent — each fixture's shape is checked against the
+      normative JSON Schema / strict loader in design (§ Fixture JSON shape) — then the layout
+      rules are replayed from the recorded field declarations and type table: for every
+      struct, first field at offset 0; field
+      offsets strictly increasing in declaration order; `offset + size <= struct size` for
+      each field; struct size = align-up of the last field's end to the struct alignment;
+      struct alignment = max member alignment (type table: `DWORD`/`LONG`/`time_t`/
+      `__time32_t`/`float` align 4, `char[N]` aligns 1). Also assert every nested/array
+      element type reference resolves to a recorded struct and arrays have
+      `size = count × size(element)`. The layout rules live in one shared helper imported
+      by both the generator and this test, so they can never silently diverge; the test
+      catches corrupted, truncated, or hand-edited fixtures (and any mismatch between the
+      recorded offsets/sizes and a replay of the rules) so CI fails before the ctypes
+      binding checks (18.4 / 20.3) run against a bad fixture.
+    - This task owns the fixture files, the generator, and the fixture-consistency unit
+      test above. The fixture-vs-`mahm.py` binding assertion and the runtime
+      signature/version validator tests are task 18.4 (the monitoring-side mirror of 20.3),
+      which reuse this task's fixtures and generator; 20.3 reuses the MACM half of these
+      fixtures the same way.
+    - _Requirements: 2.1, 2.4, 3.1_
+  - [x] 18.4 Verify MAHM ctypes bindings and runtime signature/version validation
+    - Monitoring-side mirror of 20.3. Add unit tests that (a) load the installed
+      `SDK\Include\MAHMSharedMemory.h` from the detected Afterburner install when present and
+      assert the `ctypes.Structure` definitions in `mahm.py` match it — field names, sizes,
+      and offsets for `MAHM_SHARED_MEMORY_HEADER`, `MAHM_SHARED_MEMORY_ENTRY`, and
+      `MAHM_SHARED_MEMORY_GPU_ENTRY` plus the header constants (`'MAHM'` signature,
+      `0x00020000` v2.0, `MONITORING_SOURCE_ID_*` values, entry-flag bits) — falling back to
+      the committed fixture from task 18.3 (`tests/fixtures/sdk_layouts/mahm_layout.json`)
+      when the install is absent so the check always runs, and run
+      `tools/generate_sdk_layout_fixtures.py --diff` (task 18.3) against the live header to
+      catch layout drift; and (b) drive the runtime validator with injected shared-memory
+      fixtures asserting it rejects a deallocated/absent map (`0xDEAD` marker per the
+      header), a wrong signature (≠ `'MAHM'`), an unsupported version (≠ `0x00020000`),
+      or zero/oversized `dwEntrySize` / `dwGpuEntrySize` — including a declared region
+      `dwHeaderSize + dwNumEntries × dwEntrySize + dwNumGpuEntries × dwGpuEntrySize` that
+      exceeds the mapped size — returning typed `INTERFACE_UNAVAILABLE`/
+      `UNSUPPORTED_VERSION` and never crashing, and that the client never requests write
+      access to the map (read-only monitoring; no `FILE_MAP_WRITE` open) so no malformed
+      header can ever cause a write. Re-run (a) against the live installed header on any
+      version change (per-release re-verification).
+    - _Requirements: 2.1, 2.4, 3.1, 7.3, 7.4_
 
-- [ ] 19. Implement the capability-gated MACM control client (undocumented/RE, OS/shared-memory)
-  - [ ] 19.1 Implement `AfterburnerControlClient`
+- [x] 19. Research gate — document tuning-authority precedence before the control layer
+  - Create `research/tuning-authority-precedence.md` recording, with sources labeled by status and
+    a re-verify-at-implementation caveat: which driver interfaces each authority writes (G-Assist
+    native tuning via NVIDIA performance/tuning interfaces; NVIDIA App Automatic Tuning via
+    driver/NVAPI-based auto tuning; MSI Afterburner via MAHM/MACM (SDK headers and samples
+    verified on Afterburner 4.6.7) plus its apply-at-Windows-startup profile auto-apply); that the GPU exposes ONE shared set of driver tuning parameters whose
+    values do not stack across tools; what is observable vs NOT observable through Afterburner
+    interfaces; and known cross-tool evidence (e.g., OC offsets written by other utilities not
+    recognized via NVAPI perf-pstate deltas). Conclude with design consequences (Requirements
+    19.1–19.5) and any unresolved questions to re-validate on real hardware during the optional
+    integration tests (18.2, 20.2).
+  - Checkpoint with the user: the MACM control client (Task 20) MUST NOT be implemented until
+    this document exists and is reviewed (Requirement 19.6).
+  - _Requirements: 19.6_
+
+- [x] 20. Implement the capability-gated MACM control client (official SDK header, OS/shared-memory)
+  - [x] 20.1 Implement `AfterburnerControlClient`
     - Create `afterburner/integration/macm.py` implementing the control parts of
       `AfterburnerInterface` against MACM shared memory: write only known control fields with
       already-validated/clamped values (no generic memory writer); report `INTERFACE_UNAVAILABLE`/
-      `ACCESS_DENIED`/`DISCONNECTED` cleanly. Note in the module docstring this is the
-      undocumented/reverse-engineered interface and the only privileged write path.
-    - _Requirements: 7.1, 7.2, 7.3, 7.4, 13.5, 14.1_
-  - [ ]* 19.2 Write optional integration test for MACM control
+      `ACCESS_DENIED`/`DISCONNECTED` cleanly. Follow the concrete write protocol in design.md § “MACM Control Write Sequence (observed
+      from the shipped SDK)”: mutex-guarded named-field write, `dwCommand = FLUSH` set last,
+      completion poll, read-back verification. Note in the module docstring this is the official MACM control interface — shipped SDK header
+      `SDK\Include\MACMSharedMemory.h` (v2.0, `'MACM'` signature) — and the only privileged write
+      path. Bind structs to the installed header and validate the shared-memory signature/version
+      at runtime; re-verify per release (older installs may lack the SDK, in which case control is
+      capability-gated unavailable). **Do not begin until the Task 19 research gate has been
+      completed and reviewed (Requirement 19.6).**
+    - _Requirements: 7.1, 7.2, 7.3, 7.4, 13.5, 14.1, 19.6_
+  - [x]* 20.2 Write optional integration test for MACM control
     - Opt-in behind an explicit flag, skipped when Afterburner/MACM absent: apply-and-read-back a
-      single clamped control; assert graceful typed error when unavailable.
+      single clamped control; assert graceful typed error when unavailable. Also assert the
+      write-time no-op: when the applied state already equals the request inside the write
+      transaction, success is returned without issuing FLUSH (Requirement 19.4 — the authoritative
+      check happens at write time, after any confirmation window).
+    - Ran **live and PASSING (2/2, elevated) against the real Afterburner 4.6.7.17439 install**: the
+      write-time no-op, and a real power-limit apply 100% → 103% with read-back verification and
+      restore to 100% (both verified). Two findings from the live run: (a) **elevation** — Afterburner
+      runs elevated on this machine and never confirms MACM FLUSH commands from a non-elevated
+      process within the protocol's 5 s budget (writes land, `dwCommand` never clears, and the value
+      may be applied minutes later); the suite must run elevated when Afterburner is. (b) a latent
+      test bug fixed (`result.replaced` → `result.replaced_value`), visible only when the suite
+      actually runs live. `AfterburnerControlClient` was hardened accordingly: a best-effort
+      elevation-mismatch check (`_afterburner_elevation_mismatch`) fails **fast with `ACCESS_DENIED`**
+      and a targeted “restart elevated” message before any FLUSH is issued on an actual write
+      (no-ops still succeed — they need no Afterburner action), and the completion-timeout path maps
+      a detectable mismatch to the same targeted error instead of the generic
+      `INTERFACE_UNAVAILABLE` timeout (5 new unit tests in `tests/test_macm.py`).
     - _Requirements: 7.1, 7.4_
+  - [x] 20.3 Verify MACM ctypes bindings and runtime signature/version validation
+    - Add unit tests that (a) load the installed `SDK\Include\MACMSharedMemory.h` from the
+      detected Afterburner install when present and assert the `ctypes.Structure` definitions in
+      `macm.py` match it — field names, sizes, and offsets for the MACM header and GPU-entry
+      structs plus the header constants (`MACM_SHARED_MEMORY_COMMAND_*` values, expected `0x00AB0000`
+      INIT/FLUSH commands) — falling back to the committed fixture from task 18.3
+      (`tests/fixtures/sdk_layouts/macm_layout.json`) when the install is absent so the
+      check always runs, and run `tools/generate_sdk_layout_fixtures.py --diff` (task 18.3)
+      against the live header to catch layout drift; and (b) drive the runtime
+      validator with injected shared-memory fixtures asserting it rejects a deallocated/absent map
+      (`0xDEAD` marker per the header), a wrong signature, an unsupported version (v1 `0x00010000`
+      or a future major ≥ `0x00030000`; any v2.x `0x00020000`–`0x0002FFFF` whose entry layout
+      matches the bound header is accepted — the strict `== 0x00020000` pin was relaxed because the
+      live 4.6.7.17439 map reports `0x00020003`, v2.3), or a zero/oversized `dwGpuEntrySize`,
+      returning typed
+      `INTERFACE_UNAVAILABLE`/`UNSUPPORTED_VERSION` and never attempting a control write until the
+      signature/version check passes (capability gating — design Property 2). Re-run (a) against
+      the live installed header on any version change (per-release re-verification).
+    - _Requirements: 2.1, 2.4, 7.1, 7.3, 7.4, 14.1_
 
-- [ ] 20. Author `manifest.json` (Protocol V2, NL-friendly)
+- [x] 21. Author `manifest.json` (Protocol V2, NL-friendly)
   - Create `manifest.json` with Protocol V2 required fields (name, version, entry point) and the full
     function set with NL-friendly `name`/`description`/`properties` for `get_gpu_status`,
-    `get_gpu_limits`, `get_tuning_state`, `get_profiles`, `show_configuration`, `load_profile`,
+    `get_gpu_limits`, `get_tuning_state`, `get_profiles`, `show_configuration`,
+    `get_tuning_ownership`, `load_profile`,
     `reset_tuning`, `set_power_limit`, `set_core_offset`, `set_memory_offset`, `set_fan_percent`,
     `set_fan_curve`, `optimize_quiet`, `optimize_thermal`, `diagnose_performance` (control functions
     gated at runtime).
-  - _Requirements: 1.12, 18.1, 18.4_
+  - _Requirements: 1.12, 18.1, 18.4, 19.3_
 
-- [ ] 21. Implement the build/package script with deliverable verification
-  - [ ] 21.1 Implement the packaging script
+- [x] 22. Implement the build/package script with deliverable verification
+  - [x] 22.1 Implement the packaging script
     - Create `build.py` (or `package.py`) that assembles the plugin into the Protocol V2 install
       layout (`manifest.json` + `plugin.py` + `afterburner/` + vendored `libs/gassist_sdk`), excludes
       any Afterburner/RTSS binaries, and **fails with a per-item error naming each missing
       deliverable** (build/package script, install instructions, ≥3 example prompts, troubleshooting
       docs, manifest, config).
+    - Implemented as root `build.py` (stdlib-only; `--check` / `--out` / `--sdk` /
+      `--allow-no-sdk` / `--force`; exit 0 ok / 1 missing deliverable / 2 packaging error).
+      Per-item checks: `build-script`, `manifest` (Protocol V2 shape), `executable`
+      (manifest's executable file), `package` (`afterburner/__init__.py`), `vendored-sdk`
+      (`libs/gassist_sdk/` — an assembly-time input via `--sdk`, not a repo requirement: it is
+      deliberately uncommitted per `libs/README.txt`), `install-instructions`, `example-prompts`
+      (≥3 quoted bullets under an "Example prompts" heading), `troubleshooting` (README heading),
+      and `config` (optional — validated only when present). Assembly whitelist-copies
+      `manifest.json` + `plugin.py` + `afterburner/*.py` + `libs/` into `dist/afterburner` (or
+      `--out`), then scans the finished tree and refuses to package any Afterburner/RTSS-named or
+      binary payload (exit 2, names the file), and re-verifies the artifact itself.
     - _Requirements: 15.1, 18.1, 18.2, 18.3_
-  - [ ]* 21.2 Write unit tests for the deliverable-verification logic
+  - [x]* 22.2 Write unit tests for the deliverable-verification logic
     - Assert the verifier fails and names each missing deliverable, and passes when all are present.
+    - `tests/test_build.py` (21 tests, no Afterburner install): per-item missing-deliverable
+      naming for all eight required checks, pass-when-all-present, invalid-manifest and
+      missing-declared-executable cases, config-optionality, README heading/bullet conventions,
+      assembly layout + whitelist exclusions, forbidden-binary refusal (RTSS.exe / MSIAfterburner,
+      partial output removed), vendored-SDK require/override/`--allow-no-sdk`, `--force` guard,
+      and CLI exit codes 0/1. Live `--check` at the repo root currently names the two
+      genuinely missing deliverables (`example-prompts`, `troubleshooting` — authored in task
+      23), so the Task 24 final checkpoint can only pass once the docs exist.
     - _Requirements: 18.2, 18.3_
 
-- [ ] 22. Write documentation and example content
+- [x] 23. Write documentation and example content
   - Create `README.md` with install instructions (install path
     `%PROGRAMDATA%\NVIDIA Corporation\nvtopps\rise\plugins\afterburner\`, vendored `libs/gassist_sdk`),
     at least 3 example G-Assist prompts, troubleshooting docs covering installation-failure and
-    interface-unavailable scenarios, and an interface-status section listing each Afterburner
-    interface as **official** (G-Assist V2, MAHM monitoring) or **undocumented/reverse-engineered**
-    (MACM control), plus the no-redistribution statement.
-  - Add a **Distribution & Submission** section documenting three distribution paths: (1) *local
-    install (primary)* — drop the plugin folder into
-    `%PROGRAMDATA%\NVIDIA Corporation\nvtopps\rise\plugins\afterburner\`
-    (`manifest.json` + `plugin.py` + `afterburner/` + `libs/gassist_sdk`); G-Assist discovers it
-    locally with no restart needed; (2) *community sharing via a self-hosted GitHub repo* — publish
-    the plugin's own repo for users to clone/download and copy into the plugins folder, while
-    contributing an example/docs into the official NVIDIA/G-Assist repo follows a fork → pull-request
-    flow subject to NVIDIA review; (3) *official channels* — the NVIDIA G-Assist Plug-in Hackathon
-    accepts submissions as a GitHub repo containing `plugin.py`, `requirements.txt`, `manifest.json`,
-    `config.json` (if used), the plugin executable, and a README, and NVIDIA's rolling-out in-app
-    plugin discovery/download as a curated channel. State the no-redistribution caveat: the repo MUST
-    NOT bundle MSI Afterburner or RTSS (only MSI and Guru3D may redistribute them) — the README
-    instructs users to install Afterburner themselves and the plugin detects it at runtime.
+    interface-unavailable scenarios,    and an interface-status section listing each Afterburner
+    interface as **official** (G-Assist V2, MAHM monitoring), **community reference** (third-party
+    MAHM wrappers), or **official SDK header**
+    (MACM control — `SDK\Include\MACMSharedMemory.h`, re-verified per release against the
+    installed header), plus the no-redistribution statement.
+  - Root `README.md` rewritten from the spec-era scaffold to the full user-facing document:
+    build-then-install instructions for the Protocol V2 path (with `build.py --check` / `--sdk`),
+    a 6-prompt **Example prompts** section, the corrected interface-status table (MACM now
+    **official SDK header** — the shipped `MACMSharedMemory.h` + sample, re-verified per release;
+    stale “reverse-engineered” claim removed), the Requirement 19 tuning-ownership model with the
+    “What's controlling my GPU overclock right now?” prompt, the three-path Distribution &
+    Submission section with the no-redistribution caveat, a Troubleshooting section covering
+    installation-failure and interface-unavailable/elevation/staleness scenarios plus log paths,
+    and development/verification commands. Meets the build.py conventions exactly: live
+    `build.py --check` at the repo root now PASSES (8/8), and a full `build.py --sdk` assembly
+    produced a verified 32-file Protocol V2 artifact.
   - _Requirements: 15.1, 18.2, 18.4_
+  - Document the Requirement 19 tuning-ownership model in the README (the GPU has one shared
+    tuning state; the plugin applies changes only through Afterburner; NVIDIA App Automatic
+    Tuning / G-Assist native tuning are not observable through Afterburner and may override or be
+    overridden) and include an example prompt: "What's controlling my GPU overclock right now?"
+  - _Requirements: 19.1, 19.3_
 
-- [ ] 23. Final checkpoint — Ensure all tests pass and the package builds
-  - Run the full test suite (Properties 1–8 + all unit tests) against `FakeAfterburner` and run the
+- [x] 24. Final checkpoint — Ensure all tests pass and the package builds
+  - Run the full test suite (Properties 1–10 + all unit tests) against `FakeAfterburner` and run the
     build script's deliverable verification. Ask the user if questions arise.
+  - **PASS.** Full suite: **347 passed** (2 MACM control-integration tests remain opt-in behind
+    `MSI_AFTERBURNER_CONTROL_INTEGRATION=1`). Properties P1–P10: all **23 property-test
+    functions** pass (Hypothesis ≥100 examples each against `FakeAfterburner`; P9 against
+    sandboxed fixture trees). `python build.py --check`: **8/8 deliverables, exit 0**.
+    End-to-end package build with a vendored `--sdk` copy: **exit 0, verified 8/8, 32-file
+    Protocol V2 artifact** (`manifest.json` + `plugin.py` + `afterburner/` + `libs/gassist_sdk`
+    + `README.md` + `LICENSE`). Parent rows 2–6, 8, and 12 were re-marked `[x]` — their
+    subtasks were complete; the parent markers had been missed by earlier marking passes.
+    Every task row (1–24) is now `[x]`. No questions arose.
 
 ## Notes
 
 - Tasks marked with `*` are optional test sub-tasks and can be skipped for a faster MVP; core
   implementation tasks are never optional.
-- The two optional integration tests (18.2, 19.2) require a real user-installed Afterburner and are
+- The two optional integration tests (18.2, 20.2) require a real user-installed Afterburner and are
   skipped when it is absent — they are the only tasks needing hardware.
 - Each task references specific requirement sub-clauses for traceability.
-- Property-based tests (P1–P8, minimum 100 Hypothesis examples each) validate universal correctness
+- Property-based tests (P1–P10, minimum 100 Hypothesis examples each) validate universal correctness
   properties; unit tests cover specific examples and edge cases.
 - `afterburner/integration/mahm.py` (MAHM, official) and `afterburner/integration/macm.py` (MACM,
-  undocumented/RE) are the only modules that touch OS shared memory; everything else is unit-tested
-  through the `AfterburnerInterface` mock boundary with `FakeAfterburner`.
+  official SDK header) are the only modules that touch OS shared memory, and the read-only
+  profile-file reader (Profiles directory) is the only filesystem-touching module; everything
+  else is unit-tested through the `AfterburnerInterface` mock boundary with `FakeAfterburner`.
 
 ## Task Dependency Graph
 
@@ -363,15 +628,16 @@ the real system and are covered by **optional** integration tests where practica
     { "id": 4, "tasks": ["3.2"] },
     { "id": 5, "tasks": ["3.3", "4.1"] },
     { "id": 6, "tasks": ["4.2", "4.3", "5.1", "5.2", "6.1", "8.1", "9.1", "12.1"] },
-    { "id": 7, "tasks": ["5.3", "5.4", "5.5", "6.2", "6.3", "8.2", "8.3", "9.2", "12.2", "7"] },
-    { "id": 8, "tasks": ["10.1"] },
+    { "id": 7, "tasks": ["5.3", "5.4", "5.5", "6.2", "6.3", "8.2", "8.3", "9.2", "9.7", "12.2", "7"] },
+    { "id": 8, "tasks": ["10.1", "9.4"] },
     { "id": 9, "tasks": ["10.2", "10.3", "11.1"] },
     { "id": 10, "tasks": ["11.2", "14.1"] },
     { "id": 11, "tasks": ["14.2", "15.1"] },
     { "id": 12, "tasks": ["15.2"] },
     { "id": 13, "tasks": ["15.3", "15.4", "16"] },
-    { "id": 14, "tasks": ["18.1", "19.1", "20", "21.1"] },
-    { "id": 15, "tasks": ["18.2", "19.2", "21.2", "22"] }
+    { "id": 14, "tasks": ["18.1", "19", "21"] },
+    { "id": 15, "tasks": ["18.2", "18.3", "18.4", "20.1", "20.2", "20.3", "22.1", "22.2", "23"] },
+    { "id": 16, "tasks": ["24"] }
   ]
 }
 ```
